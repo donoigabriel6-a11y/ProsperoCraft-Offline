@@ -207,10 +207,9 @@ Read this first, then project/README.md (full state, flags, measurements, lesson
 - (separate zip ps5-mc-java-transcript.zip) this_chat_full_transcript.jsonl: the complete raw chat; unzip it next to this folder and grep it for any detail.
 
 ## Project in one paragraph
-Native PS5 homebrew title PPSA27272 runs Minecraft Java Edition: cross-built HotSpot (JDK 17, and JDK 21 via ps5_jdk_patch21.py/JDKV=21), C1 only, LWJGL 3.3.x + GLFW-over-EGL shim (ps5lwjgl.c), ps5-opengl SDK 1.0.1, chunk draw merge layer (ps5mega.inc), Fabric/Sodium/Iris work on 1.20.1 and 1.21.1. PC <PC ip>, PS5 <PS5 ip>, FTP 2121, UDP PowerShell listener port 9999. Build in WSL from ~ (boilerplate ~/ps5probe). Windows Downloads folder is /mnt/c/Users/<user>/Downloads (glob /mnt/c/Users/*/Downloads matches several users and breaks `cd`).
+Native PS5 homebrew title PPSA27272 runs Minecraft Java Edition: cross-built HotSpot (JDK 17, and JDK 21 via ps5_jdk_patch21.py/JDKV=21), C1 only, LWJGL 3.3.x + GLFW-over-EGL shim (ps5lwjgl.c), ps5-opengl SDK 1.0.1, chunk draw merge layer (ps5mega.inc), Fabric/Sodium/Iris work on 1.20.1 and 1.21.1. PC <PC ip>, PS5 <PS5 ip>, FTP 2121, UDP PowerShell listener port 9999. Build in WSL from ~ (boilerplate ~/ps5probe).
 Build line (the user's usual, now with the native UI):
 `cd ~ && NETPROBE=1 MEGA=1 UNCAP=1 GLTHREAD=1 GC=parallel XMX=2560 bash make_jvm_title.sh <PC ip> <PS5 ip> jit gl mc launcher sdk100 nativeui`
-Copy lines: `cd /mnt/c/Users/<user>/Downloads` then `cp "$(ls -t NAME*.EXT | head -1)" ~/NAME.EXT` for each file (Kit.java McDownload.java McMods.java McBoot.java LauncherUI.java jvm_host.cpp ps5lwjgl.c make_jvm_title.sh), and `unzip -q -o "$(ls -t kit_launcher*.zip | head -1)" -d ~/` (the user needs kit_launcher/ next to make_jvm_title.sh in ~; the script options use "${@:3}" so any number of option words work).
 
 ## What this chat added (native launcher, "7f")
 1. Aurora-style C++ launcher UI from the kit (ui::Form, Keyboard, Scroller...). Home: instance shelf + tools shelf. Cross = Play, Square = instance settings sheet (name via keyboard, version, loader, memory, cpus, jit, gc, delete with confirm).

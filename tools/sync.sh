@@ -18,5 +18,5 @@ cp -rf "$REPO/tests/." "$BUILD_DIR/tests/"
 for f in icon0.png pic0.png pic0.dds pic1.dds pic2.dds snd0.at9; do
   if [ -f "$ASSETS/$f" ]; then cp -f "$ASSETS/$f" "$BUILD_DIR/brand/"; elif [ ! -f "$BUILD_DIR/brand/$f" ]; then echo "note: brand/$f not found in $ASSETS (title keeps its default)"; fi
 done
-[ -d "$HOME/ps5probe/sce_sys" ] && cp -f "$REPO/title/sce_sys/param.json" "$HOME/ps5probe/sce_sys/param.json"   # title id / content id / name
+mkdir -p "$HOME/ps5probe" && cp -rf "$REPO/title/." "$HOME/ps5probe/"   # title boilerplate (identity in title/sce_sys/param.json); only adds / overwrites, generated files and your artwork stay
 echo "synced $REPO -> $BUILD_DIR"

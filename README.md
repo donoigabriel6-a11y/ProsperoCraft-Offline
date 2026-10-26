@@ -40,7 +40,7 @@ tests/        sandbox tests (no console needed)
 docs/         BUILDING.md, ARCHITECTURE.md
 ```
 
-Build: see [docs/BUILDING.md](docs/BUILDING.md) (`MSA_CLIENT_ID=<id> bash tools/build.sh <PC ip> <PS5 ip>`). Design notes: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Build: see [docs/BUILDING.md](docs/BUILDING.md) (`MSA_CLIENT_ID=<id> bash tools/build.sh <PC ip> <PS5 ip>`). Design notes: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). For AI assistants continuing the work: [docs/ai/HANDOFF.md](docs/ai/HANDOFF.md) and [docs/ai/NEW_CHAT_PROMPT.md](docs/ai/NEW_CHAT_PROMPT.md).
 
 ## Status
 

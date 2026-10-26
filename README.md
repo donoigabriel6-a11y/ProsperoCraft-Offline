@@ -16,9 +16,9 @@ A non-commercial, hobby launcher and runtime for **Minecraft: Java Edition** on 
 
 ## Features
 
-- **Native launcher** (C++, controller driven): instances, version and mod management, Microsoft sign-in, settings, loading screen.
+- **Native launcher** (C++, controller driven): instances, version and mod management, settings, loading screen.
 - **Many versions**: Minecraft 1.x up to 26.3, each on the Java it needs (8 / 17 / 21 / 25, chosen automatically).
-- **Mods**: Fabric, Quilt, Forge and NeoForge, with automatic fitting (mods that do not suit the version or the console are set aside and come back when they do).
+- **Mods**: Fabric (recommended), Quilt, Forge and NeoForge, with automatic fitting: mods that do not suit the version or the console are set aside and come back when they do. Modrinth mods work; CurseForge is not implemented yet.
 - **Three renderers**, chosen in the launcher:
 
   | Renderer | What it is | Good for |
@@ -31,14 +31,44 @@ A non-commercial, hobby launcher and runtime for **Minecraft: Java Edition** on 
 - **Controller emulation**: the DualSense acts as keyboard and mouse (touchpad = cursor); USB keyboard and mouse work too.
 - **One global Memory setting** in the launcher (up to 8 GB).
 
-## What it does not do
+## Mod loaders
 
-- It does **not** include or distribute Minecraft game files. They are downloaded from Mojang's own servers at runtime, as the official launcher does.
-- It does **not** bypass ownership checks. Online play requires a Microsoft account that owns Minecraft: Java Edition. A local offline mode (username only) exists, like the game's own.
+| Loader | Status |
+|---|---|
+| **Fabric** (recommended) | The most tested. It has been used across many versions since the start of the project, and over 50 mods have been tried with it. |
+| **Forge / Quilt** | Should mostly work, but they received much less debugging. Expect many mods to crash. |
+| **NeoForge** | Never debugged or tested. It probably won't work for now. |
 
-## Microsoft sign-in
+Mod sources: **Modrinth** mods work today. **CurseForge** is not properly implemented yet.
 
-Standard Microsoft device-code flow (scope `XboxLive.signin offline_access`), then the usual chain: Microsoft OAuth device code → Xbox Live token → XSTS → `api.minecraftservices.com` `login_with_xbox` → profile lookup. It is a public client (no client secret). The only thing stored is the player's own refresh token, on their own device. The Azure app registration is named **ConsoleCraft**; its application id is not in this repository, you supply your own at build time (`MSA_CLIENT_ID`).
+## Recommended setups
+
+| | Vulkan | Zink | OpenGL |
+|---|---|---|---|
+| **Minecraft** | 26.2 – 26.3 | 1.20+ | 1.0+ |
+| **Loader** | Vanilla, Fabric | Vanilla, Fabric | Vanilla, Fabric, Forge |
+| **Mods** | Fabric API, Sodium, Vitrail Shaders | Fabric API, Sodium, Iris Shaders | any that suit your version |
+| **Shaders** | Complementary, Sildur's or others | Complementary, Sildur's or others | not recommended |
+
+## Renderers: what to expect
+
+**OpenGL** has the broadest compatibility with versions and mods, and the launcher runs on it. Its performance is low, though, and shader packs will lag badly. It is generally stable and rarely freezes or crashes unless performance is the cause.
+
+**Zink (OpenGL on Vulkan)** also works with the launcher and with any version, supports the same mods as OpenGL, and performs very well, close to native Vulkan. Its biggest drawback is random freezes or crashes, and the launcher can lag after you exit Minecraft back to it.
+
+**Vulkan** has limited compatibility but works great on the versions with a native Vulkan backend, 26.2 – 26.3. In my testing it has not frozen or crashed during gameplay. Modded Vulkan through **VulkanMod** works too, but it was tested mainly on 26.1.x, so expect minor stutters or crashes on other versions.
+
+## Accounts and multiplayer
+
+Microsoft sign-in is currently a **placeholder in the source code**. Official multiplayer servers do work (I tested it), but I excluded login support. I won't go into more detail than that; that's how it is for now. You can still play in **offline mode** and over **LAN multiplayer**.
+
+The project does not include or distribute Minecraft game files: they are downloaded from Mojang's own servers at runtime, as the official launcher does. It does not bypass ownership checks.
+
+## Project status
+
+This project is **paused** and probably won't get updates for a long time, because my Claude Pro subscription ran out. That is why I'm publishing it as it is. I know about the remaining bugs. I tried my best to make it playable and authentic without turning it into AI slop, but my time has run out. I spent almost 30 days of my entire Claude usage on this, just for the fun of it. Thank you for checking it out.
+
+Console-tested: Minecraft Java from 1.x up to 26.3 on OpenGL, OpenGL via Zink and Vulkan; Fabric mods; the launcher, instances and the global memory setting; starting a Vulkan game from the Zink launcher without restarting the app. Known open items are listed in [docs/ai/HANDOFF.md](docs/ai/HANDOFF.md).
 
 ## How it starts
 
@@ -72,7 +102,7 @@ docs/         BUILDING.md, ARCHITECTURE.md, ai/ (notes for AI assistants)
 
 ## Build
 
-Needs WSL, the PS5 payload SDK and the Vulkan project, see [docs/BUILDING.md](docs/BUILDING.md):
+Needs WSL, the PS5 payload SDK and the Vulkan project, see [docs/BUILDING.md](docs/BUILDING.md). `MSA_CLIENT_ID` is only needed for the (placeholder) Microsoft sign-in code and can be left out:
 
 ```
 MSA_CLIENT_ID=<your Azure app id> bash tools/build.sh <PC ip> <PS5 ip>
@@ -80,13 +110,21 @@ MSA_CLIENT_ID=<your Azure app id> bash tools/build.sh <PC ip> <PS5 ip>
 
 Design notes: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Continuing this with an AI assistant? Start from [docs/ai/HANDOFF.md](docs/ai/HANDOFF.md) and [docs/ai/NEW_CHAT_PROMPT.md](docs/ai/NEW_CHAT_PROMPT.md).
 
-## Status
-
-Work in progress. Console-tested: Minecraft Java from 1.x up to 26.3 on OpenGL, OpenGL via Zink and Vulkan; Fabric / Quilt / Forge / NeoForge mods; the launcher, instances, Microsoft sign-in and the global memory setting; starting a Vulkan game from the Zink launcher without restarting the app. Known open items are listed in [docs/ai/HANDOFF.md](docs/ai/HANDOFF.md).
-
 ## Credits
 
 ProsperoCraft stands on a lot of other people's work:
 [ps5-payload-dev/sdk](https://github.com/ps5-payload-dev/sdk) (PS5 toolchain) · [mihawk-99/PS5_Vulkan](https://github.com/mihawk-99/PS5_Vulkan) (RADV on the console) · BlackBearReloaded (the Kit launcher UI and the native app boilerplate, GPL-3) · SvenGDK's SharpProspero (ELF/FSELF tooling in the boilerplate) · [LWJGL](https://www.lwjgl.org/) · [gl4es](https://github.com/ptitSeb/gl4es) (ptitSeb) · [Mesa / Zink](https://www.mesa3d.org/) · [OpenJDK](https://openjdk.org/) · [FreeType](https://freetype.org/) · [libffi](https://github.com/libffi/libffi). Full notices for the boilerplate: [title/THIRD_PARTY_NOTICES.md](title/THIRD_PARTY_NOTICES.md).
 
-*Not affiliated with Mojang Studios, Microsoft, or Sony Interactive Entertainment. Minecraft is a trademark of Mojang Synergies AB.*
+## Disclaimer
+
+ProsperoCraft is an unofficial, non-commercial hobby project. It is **not affiliated with or endorsed by** Mojang Studios, Microsoft or Sony Interactive Entertainment. Minecraft is a trademark of Mojang Synergies AB. It contains no Minecraft game files, and you need your own copy of the game to play online. You use it at your own risk; running homebrew on a console is your own decision and responsibility. The software is provided "as is", without warranty of any kind, and there is no support or timeline for fixes.
+
+## Support
+
+<div align="center">
+
+**Enjoying ProsperoCraft?** It was built for fun, and a coffee helps.
+
+[![Support me on Ko-fi](https://img.shields.io/badge/Ko--fi-Support%20me-FF5E5B?style=for-the-badge&logo=ko-fi&logoColor=white)](https://ko-fi.com/tmghd272)
+
+</div>

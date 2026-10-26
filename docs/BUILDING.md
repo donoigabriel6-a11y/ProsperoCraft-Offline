@@ -5,15 +5,15 @@ Everything is built in WSL (Ubuntu) on a PC, deployed over the network to a PS5 
 ## One-time setup
 - ps5-payload-sdk (prospero-clang), the OpenGL SDK 1.0.2, `PS5_Vulkan` + `PS5_VulkanTemplate`, `PS5_Mesa` (headers), JDK source trees for 8/17/21/25. `tools/build/mc_deps.sh`, `make_gl_cube.sh` and `make_zink_obj.sh` fetch / build most of them; run them once, the main build tells you what is missing.
 - Build folder: `~/ps5-mc-java` (created by `tools/sync.sh`). Title folder: `~/ps5probe` (from the boilerplate).
-- Your own artwork (not in this repo): `icon0.png pic0.png pic0.dds pic1.dds pic2.dds snd0.at9` in one folder (default `/mnt/c/Users/Enzo/Downloads/ps5-mc-java`, override with `ASSETS=`), launcher backgrounds in `~/ps5-mc-java/kit_launcher/assets/backgrounds` and `unknown_pack.png` next to them.
+- Your own artwork (not in this repo): `icon0.png pic0.png pic0.dds pic1.dds pic2.dds snd0.at9` in one folder (default `~/ps5-assets`, or pass `--assets <dir>`), launcher backgrounds in `~/ps5-mc-java/kit_launcher/assets/backgrounds` and `unknown_pack.png` next to them.
 
 ## Every build (one command)
 ```
-cd ~/ProsperoCraft && git pull && MSA_CLIENT_ID=<your Azure app id> bash tools/build.sh <PC ip> <PS5 ip>
+cd ~/ProsperoCraft && git pull && MSA_CLIENT_ID=<your Azure app id> bash tools/build.sh <PC ip> <PS5 ip> [--assets <dir>] [--build-dir <dir>]
 ```
 `tools/build.sh` = `tools/sync.sh` (repo -> flat build folder, never deletes anything there) + forces the host to rebuild + `make_jvm_title.sh <PC> <PS5> jit gl mc launcher sdk100 nativeui vk` (default options; pass your own after the two IPs). The title deploys itself; `NODEPLOY=1` skips the upload.
 
-Variables: `BUILD_DIR` (default `~/ps5-mc-java`), `ASSETS` (brand folder), `MSA_CLIENT_ID` (never stored in the sources: staged into `assets/mc/msa_client_id`; or put `msaClientId=` in launcher.cfg).
+Options: `--build-dir` (default `~/ps5-mc-java`), `--assets` (brand folder; or the `BUILD_DIR` / `ASSETS` variables). `<PC ip>` is the PC that receives the log, `<PS5 ip>` the console; nothing is stored in the repo. Variable: `MSA_CLIENT_ID` (never stored in the sources: staged into `assets/mc/msa_client_id`; or put `msaClientId=` in launcher.cfg).
 
 ## After each console boot
 Load the Vulkan control payload before the first build/run: `nc -w 2 <PS5 ip> 9021 < ~/PS5_Vulkan/build/ps5vkctl/ps5vkctl.elf`.

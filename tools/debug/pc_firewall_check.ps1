@@ -1,10 +1,10 @@
 # pc_firewall_check.ps1 - run in an ADMINISTRATOR PowerShell on the PC (not through listen.cmd):
-#   powershell -ExecutionPolicy Bypass -File .\pc_firewall_check.ps1            # find out what this PC drops from the console
+#   powershell -ExecutionPolicy Bypass -File .\pc_firewall_check.ps1 -Ps5 <console ip>            # find out what this PC drops from the console
 #   powershell -ExecutionPolicy Bypass -File .\pc_firewall_check.ps1 -Fix       # same, then allow everything from the console (one inbound rule limited to its IP)
 # What it does: shows the network profile and the inbound rules for Java/PowerShell, switches on Windows' "dropped packet" audit, waits while you test on the console
 # (open a world to LAN, join the PC's world), then lists every packet from the console that Windows dropped, by protocol and port. The audit is switched off again at the end.
 param(
-  [string]$Ps5 = '172.16.1.251',
+  [Parameter(Mandatory = $true)][string]$Ps5,   # the console's IP
   [switch]$Fix
 )
 $ErrorActionPreference = 'Continue'

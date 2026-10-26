@@ -4,7 +4,7 @@
 # Needs a JDK 17+ with jmods (jlink) and the matching JDK sources (JDKSRC=<tree with src/java.desktop>, default ~/work/jdk21u or ~/jdk21u or ~/jdk17u); otherwise "SKIP".
 T=$(cd "$(dirname "$0")" && pwd); P=$T/..; W=$1; mkdir -p "$W"; export JAVA_TOOL_OPTIONS=
 JH=$(dirname "$(dirname "$(readlink -f "$(command -v javac)")")"); JV=$("$JH/bin/javac" -version 2>&1 | grep -o '[0-9]*' | head -1)
-SRC=${JDKSRC:-}; for c in $HOME/jdk${JV}u $HOME/work/jdk${JV}u /home/claude/work/jdk${JV}u $HOME/jdk17u; do [ -z "$SRC" ] && [ -d $c/src/java.desktop/share/classes/java/beans ] && SRC=$c; done
+SRC=${JDKSRC:-}; for c in $HOME/jdk${JV}u $HOME/work/jdk${JV}u $HOME/jdk17u; do [ -z "$SRC" ] && [ -d $c/src/java.desktop/share/classes/java/beans ] && SRC=$c; done
 [ -n "$SRC" ] && [ -d "$SRC/src/java.scripting" ] && [ -d "$JH/jmods" ] || { echo "SKIP: no JDK sources / jmods for a JDK $JV (fails=0)"; exit 0; }
 fails=0; bad() { fails=$((fails+1)); echo "   FAIL: $*"; }
 rm -rf $W/img $W/dl $W/ref $W/mine; mkdir -p $W/dl $W/ref $W/mine $W/cls $W/lib

@@ -1,0 +1,11 @@
+# local assets (own artwork, not distributed)
+brand/
+launcher/assets/backgrounds/
+launcher/assets/unknown_pack.png
+# build output / logs
+*.o
+*.a
+*.elf
+*.zip
+log_full*.txt
+*.log

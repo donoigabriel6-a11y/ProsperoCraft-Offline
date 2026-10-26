@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Console-only log4j config for the PS5 title: no log files (chdir is blocked and relative paths fail), everything goes to System.out -> UDP log. -->
+<Configuration status="WARN">
+  <!-- Two messages that are platform noise on this console and print a 40-line stack trace each (several times per start): Minecraft's SystemReport asking oshi for CPU / memory info (needs JNA + libc, which a
+       static title cannot open), and the narrator (no text-to-speech library for FreeBSD). Nothing else is filtered. -->
+  <Filters>
+    <RegexFilter regex="Failed retrieving info for group .*|Error while loading the narrator.*|Failed to request yggdrasil public key.*|Failed to notify the beacon.*|Failed to verify authentication.*|Could not authorize you against Realms.*|Timer hack thread interrupted.*" onMatch="DENY" onMismatch="NEUTRAL"/>
+  </Filters>
+  <Appenders>
+    <Console name="SysOut" target="SYSTEM_OUT">
+      <PatternLayout pattern="[%d{HH:mm:ss}] [%t/%level]: %msg%n"/>
+    </Console>
+  </Appenders>
+  <Loggers>
+    <Root level="info">
+      <AppenderRef ref="SysOut"/>
+    </Root>
+  </Loggers>
+</Configuration>

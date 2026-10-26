@@ -1,0 +1,711 @@
+//// FILE: java/awt/Image.java
+package java.awt;
+
+import java.awt.image.ImageObserver;
+import java.awt.image.ImageProducer;
+
+/** PS5 AWT-lite: java.awt.Image without the Toolkit / native initialisation of the real one (java.desktop's natives are not in the image). */
+public abstract class Image {
+    public static final Object UndefinedProperty = new Object();
+    public static final int SCALE_DEFAULT = 1, SCALE_FAST = 2, SCALE_SMOOTH = 4, SCALE_REPLICATE = 8, SCALE_AREA_AVERAGING = 16;
+    public abstract int getWidth(ImageObserver observer);
+    public abstract int getHeight(ImageObserver observer);
+    public abstract ImageProducer getSource();
+    public abstract Graphics getGraphics();
+    public abstract Object getProperty(String name, ImageObserver observer);
+    public Image getScaledInstance(int width, int height, int hints) { throw new UnsupportedOperationException("Image.getScaledInstance"); }
+    public void flush() { }
+}
+//// FILE: java/awt/image/BufferedImage.java
+package java.awt.image;
+
+import java.awt.Graphics;
+import java.awt.Graphics2D;
+import java.awt.Image;
+import java.awt.Point;
+import java.awt.Rectangle;
+import java.awt.Transparency;
+import java.util.Vector;
+
+/**
+ * PS5 AWT-lite: a BufferedImage that keeps its pixels as ARGB ints. The real one builds a ColorModel, whose sRGB colour space needs the ICC / LittleCMS natives of java.desktop (not in the image).
+ * What Minecraft (1.12.2 and older) uses: constructors, getWidth / getHeight / getType, getRGB / setRGB (single and area), getSubimage (shares the pixels), getRaster().getDataBuffer() as DataBufferInt
+ * (ImageBufferDownload), getGraphics / createGraphics (sun.awt.PS5Graphics2D), and use as a RenderedImage (ImageIO.write). Types without alpha store 0xFF in the alpha byte.
+ */
+public class BufferedImage extends Image implements WritableRenderedImage, Transparency {
+    public static final int TYPE_CUSTOM = 0, TYPE_INT_RGB = 1, TYPE_INT_ARGB = 2, TYPE_INT_ARGB_PRE = 3, TYPE_INT_BGR = 4, TYPE_3BYTE_BGR = 5, TYPE_4BYTE_ABGR = 6, TYPE_4BYTE_ABGR_PRE = 7,
+        TYPE_USHORT_565_RGB = 8, TYPE_USHORT_555_RGB = 9, TYPE_BYTE_GRAY = 10, TYPE_USHORT_GRAY = 11, TYPE_BYTE_BINARY = 12, TYPE_BYTE_INDEXED = 13;
+
+    private final int width, height, type, offset, stride;
+    private final int[] data;
+    private final boolean hasAlpha;
+    private WritableRaster raster;
+
+    public BufferedImage(int width, int height, int imageType) {
+        if (width <= 0 || height <= 0) throw new IllegalArgumentException("Width (" + width + ") and height (" + height + ") cannot be <= 0");
+        if (imageType < 1 || imageType > 13) throw new IllegalArgumentException("Unknown image type " + imageType);
+        this.width = width; this.height = height; this.type = imageType; this.offset = 0; this.stride = width;
+        this.hasAlpha = imageType == TYPE_INT_ARGB || imageType == TYPE_INT_ARGB_PRE || imageType == TYPE_4BYTE_ABGR || imageType == TYPE_4BYTE_ABGR_PRE;
+        this.data = new int[Math.multiplyExact(width, height)];
+        if (!hasAlpha) java.util.Arrays.fill(data, 0xFF000000);
+    }
+    private BufferedImage(BufferedImage base, int x, int y, int w, int h) {
+        this.width = w; this.height = h; this.type = base.type; this.hasAlpha = base.hasAlpha; this.data = base.data; this.stride = base.stride; this.offset = base.offset + y * base.stride + x;
+    }
+
+    public int getType() { return type; }
+    public int getWidth() { return width; }
+    public int getHeight() { return height; }
+    public int getWidth(ImageObserver o) { return width; }
+    public int getHeight(ImageObserver o) { return height; }
+    public int getMinX() { return 0; }
+    public int getMinY() { return 0; }
+    public ImageProducer getSource() { throw new UnsupportedOperationException("BufferedImage.getSource"); }
+    public Object getProperty(String name, ImageObserver o) { return getProperty(name); }
+    public Object getProperty(String name) { if (name == null) throw new NullPointerException("null property name is not allowed"); return Image.UndefinedProperty; }
+    public String[] getPropertyNames() { return null; }
+    public Vector<RenderedImage> getSources() { return null; }
+    public ColorModel getColorModel() { return null; }
+    public SampleModel getSampleModel() { return getRaster().getSampleModel(); }
+    public int getTransparency() { return hasAlpha ? Transparency.TRANSLUCENT : Transparency.OPAQUE; }
+    public boolean isAlphaPremultiplied() { return type == TYPE_INT_ARGB_PRE || type == TYPE_4BYTE_ABGR_PRE; }
+    public WritableRaster getAlphaRaster() { return null; }
+    public void flush() { }
+
+    private void check(int x, int y) { if (x < 0 || y < 0 || x >= width || y >= height) throw new ArrayIndexOutOfBoundsException("Coordinate out of bounds!"); }
+    public int getRGB(int x, int y) { check(x, y); return data[offset + y * stride + x]; }
+    public void setRGB(int x, int y, int rgb) { check(x, y); data[offset + y * stride + x] = hasAlpha ? rgb : rgb | 0xFF000000; }
+    public int[] getRGB(int startX, int startY, int w, int h, int[] rgbArray, int offset, int scansize) {
+        if (w < 0 || h < 0 || startX < 0 || startY < 0 || startX + w > width || startY + h > height) throw new ArrayIndexOutOfBoundsException("Coordinate out of bounds!");
+        if (rgbArray == null) rgbArray = new int[offset + h * scansize];
+        for (int y = 0; y < h; y++) System.arraycopy(data, this.offset + (startY + y) * stride + startX, rgbArray, offset + y * scansize, w);
+        return rgbArray;
+    }
+    public void setRGB(int startX, int startY, int w, int h, int[] rgbArray, int offset, int scansize) {
+        if (w < 0 || h < 0 || startX < 0 || startY < 0 || startX + w > width || startY + h > height) throw new ArrayIndexOutOfBoundsException("Coordinate out of bounds!");
+        for (int y = 0; y < h; y++) {
+            int s = offset + y * scansize, d = this.offset + (startY + y) * stride + startX;
+            if (hasAlpha) System.arraycopy(rgbArray, s, data, d, w); else for (int x = 0; x < w; x++) data[d + x] = rgbArray[s + x] | 0xFF000000;
+        }
+    }
+    public BufferedImage getSubimage(int x, int y, int w, int h) {
+        if (x < 0 || y < 0 || w <= 0 || h <= 0 || x + w > width || y + h > height) throw new java.awt.image.RasterFormatException("(x + width) is outside of Raster");
+        return new BufferedImage(this, x, y, w, h);
+    }
+
+    /** The pixels as a packed ARGB raster (DataBufferInt over the same int[]): Minecraft's ImageBufferDownload edits skins through ((DataBufferInt) getRaster().getDataBuffer()).getData(). Whole images only. */
+    public WritableRaster getRaster() {
+        if (raster == null) {
+            if (offset != 0 || stride != width) throw new UnsupportedOperationException("raster of a sub-image");
+            DataBufferInt db = new DataBufferInt(data, data.length);
+            raster = Raster.createPackedRaster(db, width, height, width, hasAlpha ? new int[] { 0xFF0000, 0xFF00, 0xFF, 0xFF000000 } : new int[] { 0xFF0000, 0xFF00, 0xFF }, null);
+        }
+        return raster;
+    }
+    public Raster getData() { return getRaster(); }
+    public Raster getData(Rectangle rect) { return getRaster().createChild(rect.x, rect.y, rect.width, rect.height, rect.x, rect.y, null); }
+    public WritableRaster copyData(WritableRaster outRaster) { throw new UnsupportedOperationException("BufferedImage.copyData"); }
+    public void setData(Raster r) { throw new UnsupportedOperationException("BufferedImage.setData"); }
+
+    public Graphics getGraphics() { return createGraphics(); }
+    public Graphics2D createGraphics() { return new sun.awt.PS5Graphics2D(this); }
+
+    // RenderedImage / WritableRenderedImage: single tile
+    public int getNumXTiles() { return 1; }
+    public int getNumYTiles() { return 1; }
+    public int getMinTileX() { return 0; }
+    public int getMinTileY() { return 0; }
+    public int getTileWidth() { return width; }
+    public int getTileHeight() { return height; }
+    public int getTileGridXOffset() { return 0; }
+    public int getTileGridYOffset() { return 0; }
+    public Raster getTile(int tileX, int tileY) { if (tileX != 0 || tileY != 0) throw new ArrayIndexOutOfBoundsException("BufferedImages only have one tile with index 0,0"); return getRaster(); }
+    public WritableRaster getWritableTile(int tileX, int tileY) { return (WritableRaster) getTile(tileX, tileY); }
+    public Point[] getWritableTileIndices() { return new Point[] { new Point(0, 0) }; }
+    public boolean hasTileWriters() { return true; }
+    public boolean isTileWritable(int tileX, int tileY) { return true; }
+    public void addTileObserver(TileObserver to) { }
+    public void removeTileObserver(TileObserver to) { }
+    public void releaseWritableTile(int tileX, int tileY) { }
+    public String toString() { return "BufferedImage@" + Integer.toHexString(hashCode()) + ": type = " + type + " " + width + "x" + height + " (PS5 AWT-lite)"; }
+}
+//// FILE: javax/imageio/ImageIO.java
+package javax.imageio;
+
+import java.awt.image.BufferedImage;
+import java.awt.image.RenderedImage;
+import java.io.ByteArrayOutputStream;
+import java.io.DataInputStream;
+import java.io.EOFException;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.net.URL;
+import java.util.Arrays;
+import java.util.Iterator;
+import javax.imageio.stream.FileImageInputStream;
+import javax.imageio.stream.ImageInputStream;
+import javax.imageio.stream.MemoryCacheImageInputStream;
+import java.util.zip.CRC32;
+import java.util.zip.DataFormatException;
+import java.util.zip.Deflater;
+import java.util.zip.Inflater;
+
+/**
+ * PS5 AWT-lite ImageIO: PNG only (that is all Minecraft reads and writes: textures, skins, the window icon, screenshots, world icons). The real ImageIO needs AWT natives, ICC colour management and
+ * sun.awt.AppContext. read() understands every PNG colour type and bit depth (1/2/4/8/16), palettes with tRNS, gray/RGB colour keys and Adam7 interlacing and returns TYPE_INT_ARGB (alpha present) or TYPE_INT_RGB.
+ * write() produces 8-bit RGBA PNGs. read returns null for data that is not a PNG (like the real one for an unknown format); write returns false for formats other than "png".
+ */
+public final class ImageIO {
+    private ImageIO() { }
+    private static boolean cache;
+
+    public static void scanForPlugins() { }
+    public static void setUseCache(boolean b) { cache = b; }
+    public static boolean getUseCache() { return cache; }
+    public static void setCacheDirectory(File dir) { }
+    public static File getCacheDirectory() { return null; }
+    public static String[] getReaderFormatNames() { return new String[] { "png", "PNG" }; }
+    public static String[] getWriterFormatNames() { return new String[] { "png", "PNG" }; }
+    public static String[] getReaderFileSuffixes() { return new String[] { "png" }; }
+    public static String[] getWriterFileSuffixes() { return new String[] { "png" }; }
+
+    public static BufferedImage read(File f) throws IOException {
+        if (f == null) throw new IllegalArgumentException("input == null!");
+        if (!f.canRead()) throw new IIOException("Can't read input file!");
+        try (InputStream in = new FileInputStream(f)) { return read(in); }
+    }
+    public static BufferedImage read(URL u) throws IOException {
+        if (u == null) throw new IllegalArgumentException("input == null!");
+        try (InputStream in = u.openStream()) { return read(in); }
+    }
+    public static BufferedImage read(InputStream in) throws IOException {
+        if (in == null) throw new IllegalArgumentException("input == null!");
+        java.io.ByteArrayOutputStream bo = new java.io.ByteArrayOutputStream(Math.max(in.available(), 8192));   // not InputStream.readAllBytes: this source also builds against Java 8
+        byte[] chunk = new byte[16384]; int rn;
+        while ((rn = in.read(chunk)) > 0) bo.write(chunk, 0, rn);
+        byte[] all = bo.toByteArray();
+        return decodePng(all);
+    }
+
+    public static BufferedImage read(ImageInputStream st) throws IOException {   // (Vitrail's noise textures, mods that wrap a byte array in a MemoryCacheImageInputStream)
+        if (st == null) throw new IllegalArgumentException("stream == null!");
+        java.io.ByteArrayOutputStream bo = new java.io.ByteArrayOutputStream(8192);
+        byte[] chunk = new byte[16384]; int rn;
+        while ((rn = st.read(chunk, 0, chunk.length)) > 0) bo.write(chunk, 0, rn);
+        return decodePng(bo.toByteArray());
+    }
+    public static ImageInputStream createImageInputStream(Object in) throws IOException {
+        if (in == null) throw new IllegalArgumentException("input == null!");
+        if (in instanceof ImageInputStream) return (ImageInputStream) in;
+        if (in instanceof InputStream) return new MemoryCacheImageInputStream((InputStream) in);
+        if (in instanceof File) return new FileImageInputStream((File) in);
+        return null;
+    }
+    private static boolean isPngName(String n) { return n != null && "png".equalsIgnoreCase(n); }
+    private static Iterator<ImageReader> oneReader() { return Arrays.asList(new ImageReader()).iterator(); }
+    private static Iterator<ImageReader> noReader() { return Arrays.<ImageReader>asList().iterator(); }
+    /** The PNG reader for a stream that starts with the PNG signature (the stream is left where it was), none otherwise. */
+    public static Iterator<ImageReader> getImageReaders(Object input) {
+        if (input == null) throw new IllegalArgumentException("input == null!");
+        try {
+            if (input instanceof ImageInputStream) {
+                ImageInputStream st = (ImageInputStream) input; st.mark();
+                try { byte[] sig = new byte[4]; st.readFully(sig); return (sig[0] & 0xff) == 0x89 && sig[1] == 'P' && sig[2] == 'N' && sig[3] == 'G' ? oneReader() : noReader(); }
+                finally { st.reset(); }
+            }
+        } catch (IOException e) { return noReader(); }
+        return oneReader();
+    }
+    public static Iterator<ImageReader> getImageReadersByFormatName(String f) { if (f == null) throw new IllegalArgumentException("formatName == null!"); return isPngName(f) ? oneReader() : noReader(); }
+    public static Iterator<ImageReader> getImageReadersBySuffix(String s) { if (s == null) throw new IllegalArgumentException("fileSuffix == null!"); return isPngName(s) ? oneReader() : noReader(); }
+    public static Iterator<ImageReader> getImageReadersByMIMEType(String m) { if (m == null) throw new IllegalArgumentException("MIMEType == null!"); return "image/png".equalsIgnoreCase(m) ? oneReader() : noReader(); }
+
+    public static boolean write(RenderedImage im, String format, File f) throws IOException {
+        if (f == null) throw new IllegalArgumentException("output == null!");
+        if (!"png".equalsIgnoreCase(format)) return false;
+        byte[] b = encodePng(im);
+        try (OutputStream out = new FileOutputStream(f)) { out.write(b); }
+        return true;
+    }
+    public static boolean write(RenderedImage im, String format, OutputStream out) throws IOException {
+        if (out == null) throw new IllegalArgumentException("output == null!");
+        if (!"png".equalsIgnoreCase(format)) return false;
+        out.write(encodePng(im)); out.flush();
+        return true;
+    }
+
+    // ---------------------------------------------------------------------------------------- PNG writer
+    private static void chunk(ByteArrayOutputStream o, String type, byte[] data, int len) {
+        byte[] t = type.getBytes(java.nio.charset.StandardCharsets.ISO_8859_1);
+        int2(o, len); o.write(t, 0, 4); o.write(data, 0, len);
+        CRC32 c = new CRC32(); c.update(t, 0, 4); c.update(data, 0, len); int2(o, (int) c.getValue());
+    }
+    private static void int2(ByteArrayOutputStream o, int v) { o.write(v >>> 24); o.write(v >>> 16); o.write(v >>> 8); o.write(v); }
+    private static byte[] encodePng(RenderedImage ri) throws IOException {
+        if (!(ri instanceof BufferedImage)) throw new IIOException("Unsupported image class " + (ri == null ? "null" : ri.getClass().getName()));
+        BufferedImage im = (BufferedImage) ri; int w = im.getWidth(), h = im.getHeight();
+        byte[] raw = new byte[h * (1 + 4 * w)]; int p = 0; int[] row = new int[w];
+        boolean alpha = im.getTransparency() != java.awt.Transparency.OPAQUE;
+        for (int y = 0; y < h; y++) {
+            im.getRGB(0, y, w, 1, row, 0, w); raw[p++] = 0;
+            for (int x = 0; x < w; x++) { int v = row[x]; raw[p++] = (byte) (v >> 16); raw[p++] = (byte) (v >> 8); raw[p++] = (byte) v; raw[p++] = (byte) (alpha ? v >>> 24 : 255); }
+        }
+        Deflater d = new Deflater(Deflater.DEFAULT_COMPRESSION); d.setInput(raw); d.finish();
+        ByteArrayOutputStream z = new ByteArrayOutputStream(); byte[] buf = new byte[65536];
+        while (!d.finished()) { int n = d.deflate(buf); z.write(buf, 0, n); }
+        d.end();
+        ByteArrayOutputStream o = new ByteArrayOutputStream();
+        o.write(new byte[] { (byte) 0x89, 'P', 'N', 'G', 13, 10, 26, 10 }, 0, 8);
+        ByteArrayOutputStream hd = new ByteArrayOutputStream(); int2(hd, w); int2(hd, h); hd.write(8); hd.write(6); hd.write(0); hd.write(0); hd.write(0);
+        byte[] hb = hd.toByteArray(); chunk(o, "IHDR", hb, hb.length);
+        byte[] zb = z.toByteArray(); chunk(o, "IDAT", zb, zb.length);
+        chunk(o, "IEND", new byte[0], 0);
+        return o.toByteArray();
+    }
+
+    // ---------------------------------------------------------------------------------------- PNG reader
+    private static int be32(byte[] b, int o) { return ((b[o] & 255) << 24) | ((b[o + 1] & 255) << 16) | ((b[o + 2] & 255) << 8) | (b[o + 3] & 255); }
+
+    private static BufferedImage decodePng(byte[] b) throws IOException {
+        if (b.length < 8 || (b[0] & 255) != 0x89 || b[1] != 'P' || b[2] != 'N' || b[3] != 'G') return null;
+        int pos = 8, w = 0, h = 0, depth = 0, ctype = 0, interlace = 0;
+        byte[] plte = null, trns = null; ByteArrayOutputStream idat = new ByteArrayOutputStream(); boolean seenHdr = false, end = false;
+        while (pos + 8 <= b.length && !end) {
+            int len = be32(b, pos); String type = new String(b, pos + 4, 4, java.nio.charset.StandardCharsets.ISO_8859_1); int d = pos + 8;
+            if (len < 0 || d + len > b.length) throw new IIOException("Truncated PNG chunk " + type);
+            switch (type) {
+                case "IHDR": w = be32(b, d); h = be32(b, d + 4); depth = b[d + 8] & 255; ctype = b[d + 9] & 255; interlace = b[d + 12] & 255; seenHdr = true; break;
+                case "PLTE": plte = java.util.Arrays.copyOfRange(b, d, d + len); break;
+                case "tRNS": trns = java.util.Arrays.copyOfRange(b, d, d + len); break;
+                case "IDAT": idat.write(b, d, len); break;
+                case "IEND": end = true; break;
+                default: break;
+            }
+            pos = d + len + 4;
+        }
+        if (!seenHdr || w <= 0 || h <= 0) throw new IIOException("Not a valid PNG: no IHDR");
+        int channels; switch (ctype) { case 0: case 3: channels = 1; break; case 2: channels = 3; break; case 4: channels = 2; break; case 6: channels = 4; break; default: throw new IIOException("Bad PNG colour type " + ctype); }
+        if (ctype == 3 && plte == null) throw new IIOException("PNG palette image without PLTE");
+        int bpp = channels * depth;   // bits per pixel
+        boolean hasAlpha = ctype == 4 || ctype == 6 || trns != null;
+        int[] pix = new int[w * h];
+        Inflater inf = new Inflater(); inf.setInput(idat.toByteArray());
+        int[] pw = interlace == 1 ? new int[] { 1, 1, 1, 1, 1, 1, 1 } : null;
+        int[][] adam = { { 0, 0, 8, 8 }, { 4, 0, 8, 8 }, { 0, 4, 4, 8 }, { 2, 0, 4, 4 }, { 0, 2, 2, 4 }, { 1, 0, 2, 2 }, { 0, 1, 1, 2 } };   // x0, y0, dx, dy
+        int passes = interlace == 1 ? 7 : 1;
+        int bytesPerPixelFilter = Math.max(1, bpp / 8);
+        try {
+            for (int ps = 0; ps < passes; ps++) {
+                int x0 = interlace == 1 ? adam[ps][0] : 0, y0 = interlace == 1 ? adam[ps][1] : 0, dx = interlace == 1 ? adam[ps][2] : 1, dy = interlace == 1 ? adam[ps][3] : 1;
+                int pwid = (w - x0 + dx - 1) / dx, phei = (h - y0 + dy - 1) / dy;
+                if (pwid <= 0 || phei <= 0) continue;
+                int stride = (pwid * bpp + 7) / 8;
+                byte[] prev = new byte[stride], cur = new byte[stride]; byte[] ft = new byte[1];
+                for (int y = 0; y < phei; y++) {
+                    readFully(inf, ft, 1); readFully(inf, cur, stride);
+                    int f = ft[0] & 255;
+                    for (int i = 0; i < stride; i++) {
+                        int a = i >= bytesPerPixelFilter ? cur[i - bytesPerPixelFilter] & 255 : 0, up = prev[i] & 255, c = i >= bytesPerPixelFilter ? prev[i - bytesPerPixelFilter] & 255 : 0, x = cur[i] & 255, r;
+                        switch (f) {
+                            case 0: r = x; break;
+                            case 1: r = x + a; break;
+                            case 2: r = x + up; break;
+                            case 3: r = x + ((a + up) >> 1); break;
+                            case 4: { int pp = a + up - c, pa = Math.abs(pp - a), pb = Math.abs(pp - up), pc = Math.abs(pp - c); r = x + (pa <= pb && pa <= pc ? a : pb <= pc ? up : c); break; }
+                            default: throw new IIOException("Bad PNG filter " + f);
+                        }
+                        cur[i] = (byte) r;
+                    }
+                    for (int x = 0; x < pwid; x++) pix[(y0 + y * dy) * w + (x0 + x * dx)] = pixel(cur, x, ctype, depth, plte, trns);
+                    byte[] t = prev; prev = cur; cur = t;
+                }
+            }
+        } catch (DataFormatException e) { throw new IIOException("PNG data error: " + e.getMessage()); }
+        finally { inf.end(); }
+        BufferedImage im = new BufferedImage(w, h, hasAlpha ? BufferedImage.TYPE_INT_ARGB : BufferedImage.TYPE_INT_RGB);
+        im.setRGB(0, 0, w, h, pix, 0, w);
+        return im;
+    }
+    private static void readFully(Inflater inf, byte[] out, int n) throws DataFormatException, IOException {
+        int got = 0;
+        while (got < n) {
+            int r = inf.inflate(out, got, n - got);
+            if (r == 0) { if (inf.finished() || inf.needsInput() || inf.needsDictionary()) throw new EOFException("PNG image data ends early"); }
+            got += r;
+        }
+    }
+    private static int sample(byte[] row, int index, int depth) {   // index-th sample of the row, depth 1/2/4/8/16 (16 -> full 16 bit value)
+        switch (depth) {
+            case 8: return row[index] & 255;
+            case 16: return ((row[2 * index] & 255) << 8) | (row[2 * index + 1] & 255);
+            default: { int perByte = 8 / depth, v = row[index / perByte] & 255, shift = 8 - depth * (index % perByte + 1); return (v >> shift) & ((1 << depth) - 1); }
+        }
+    }
+    private static int scale8(int v, int depth) { return depth == 8 ? v : depth == 16 ? v >> 8 : v * 255 / ((1 << depth) - 1); }
+    private static int pixel(byte[] row, int x, int ctype, int depth, byte[] plte, byte[] trns) {
+        switch (ctype) {
+            case 0: { int v = sample(row, x, depth), g = scale8(v, depth); int a = 255; if (trns != null && trns.length >= 2 && v == (((trns[0] & 255) << 8) | (trns[1] & 255))) a = 0; return (a << 24) | (g << 16) | (g << 8) | g; }
+            case 2: {
+                int r = sample(row, 3 * x, depth), g = sample(row, 3 * x + 1, depth), bl = sample(row, 3 * x + 2, depth); int a = 255;
+                if (trns != null && trns.length >= 6 && r == (((trns[0] & 255) << 8) | (trns[1] & 255)) && g == (((trns[2] & 255) << 8) | (trns[3] & 255)) && bl == (((trns[4] & 255) << 8) | (trns[5] & 255))) a = 0;
+                return (a << 24) | (scale8(r, depth) << 16) | (scale8(g, depth) << 8) | scale8(bl, depth);
+            }
+            case 3: { int i = sample(row, x, depth); if (i * 3 + 2 >= plte.length) return 0xFF000000; int a = trns != null && i < trns.length ? trns[i] & 255 : 255; return (a << 24) | ((plte[3 * i] & 255) << 16) | ((plte[3 * i + 1] & 255) << 8) | (plte[3 * i + 2] & 255); }
+            case 4: { int g = scale8(sample(row, 2 * x, depth), depth), a = scale8(sample(row, 2 * x + 1, depth), depth); return (a << 24) | (g << 16) | (g << 8) | g; }
+            default: { int r = scale8(sample(row, 4 * x, depth), depth), g = scale8(sample(row, 4 * x + 1, depth), depth), bl = scale8(sample(row, 4 * x + 2, depth), depth), a = scale8(sample(row, 4 * x + 3, depth), depth); return (a << 24) | (r << 16) | (g << 8) | bl; }
+        }
+    }
+}
+//// FILE: javax/imageio/ImageReader.java
+package javax.imageio;
+
+import java.awt.image.BufferedImage;
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import javax.imageio.stream.ImageInputStream;
+
+/**
+ * PS5 AWT-lite ImageReader: the one reader ImageIO.getImageReaders* hands out (PNG). Code that picks a reader itself (reader.setInput(stream); reader.read(0), getWidth/getHeight)
+ * gets the same decoder as ImageIO.read. The real javax.imageio.ImageReader is an SPI plug-in framework that needs ImageTypeSpecifier / IIOMetadata / ColorModel, none of which run here.
+ */
+public class ImageReader {
+    protected Object input;
+    private BufferedImage cached;
+    public ImageReader() { }
+    public void setInput(Object in) { setInput(in, false, false); }
+    public void setInput(Object in, boolean seekForwardOnly) { setInput(in, seekForwardOnly, false); }
+    public void setInput(Object in, boolean seekForwardOnly, boolean ignoreMetadata) { input = in; cached = null; }
+    public Object getInput() { return input; }
+    public String getFormatName() throws IOException { return "png"; }
+    public int getNumImages(boolean allowSearch) throws IOException { return 1; }
+    public int getWidth(int imageIndex) throws IOException { return img().getWidth(); }
+    public int getHeight(int imageIndex) throws IOException { return img().getHeight(); }
+    public BufferedImage read(int imageIndex) throws IOException { return img(); }
+    public BufferedImage read(int imageIndex, ImageReadParam param) throws IOException { return img(); }
+    public boolean canReadRaster() { return false; }
+    public void abort() { }
+    public void reset() { input = null; cached = null; }
+    public void dispose() { input = null; cached = null; }
+    private BufferedImage img() throws IOException {
+        if (cached != null) return cached;
+        if (input == null) throw new IllegalStateException("Input not set!");
+        BufferedImage b;
+        if (input instanceof ImageInputStream) b = ImageIO.read((ImageInputStream) input);
+        else if (input instanceof InputStream) b = ImageIO.read((InputStream) input);
+        else if (input instanceof File) b = ImageIO.read((File) input);
+        else throw new IllegalArgumentException("Unsupported input " + input.getClass().getName());
+        if (b == null) throw new IIOException("Unsupported Image Type");
+        cached = b;
+        return b;
+    }
+}
+//// FILE: javax/imageio/ImageReadParam.java
+package javax.imageio;
+
+/** PS5 AWT-lite: parameters are accepted and ignored (PNG is always decoded whole). */
+public class ImageReadParam {
+    public ImageReadParam() { }
+}
+//// FILE: sun/java2d/Disposer.java
+package sun.java2d;
+
+import java.lang.ref.Reference;
+import java.lang.ref.ReferenceQueue;
+
+/**
+ * PS5 AWT-lite Disposer: nothing to free natively (no AWT natives here), so records are dropped. The real one reads its settings through sun.security.action.GetPropertyAction, a class JDK 24+ no longer has:
+ * javax.imageio.stream.MemoryCacheImageInputStream (Vitrail's noise texture decode, any mod that reads an image from a stream) died with NoClassDefFoundError in Disposer.<clinit>.
+ */
+public class Disposer {
+    public static final ReferenceQueue<Object> queue = new ReferenceQueue<Object>();
+    private Disposer() { }
+    public static void addRecord(Object target, DisposerRecord rec) { }
+    public static void addObjectRecord(Object obj, DisposerRecord rec) { }
+    public static void addRecord(Object target, long disposeMethod, long pData) { }
+    public static void addReference(Reference<Object> ref, DisposerRecord rec) { }
+    public static ReferenceQueue<Object> getQueue() { return queue; }
+    public static void pollRemove() { }
+}
+//// FILE: sun/awt/PS5Graphics2D.java
+package sun.awt;
+
+import java.awt.AlphaComposite;
+import java.awt.Color;
+import java.awt.Composite;
+import java.awt.Image;
+import java.awt.Paint;
+import java.awt.Rectangle;
+import java.awt.Shape;
+import java.awt.image.BufferedImage;
+import java.awt.image.ImageObserver;
+
+/**
+ * PS5 AWT-lite: the Graphics2D of a BufferedImage, in software: what Minecraft 1.12.2 and older do with it (skin conversion in ImageBufferDownload, layered horse / armour textures in LayeredTexture):
+ * setColor / fillRect / clearRect and drawImage (1:1, scaled, flipped) with the SrcOver (default) or Src composite, nearest neighbour, optional clip rectangle. Everything else is a no-op (PS5GraphicsStubs).
+ */
+public final class PS5Graphics2D extends PS5GraphicsStubs {
+    private final BufferedImage img;
+    private Color color = Color.WHITE, background = new Color(0, 0, 0, 0);
+    private Paint paint = Color.WHITE;
+    private Composite composite = AlphaComposite.SrcOver;
+    private int tx, ty;
+    private Rectangle clip;   // device space
+
+    public PS5Graphics2D(BufferedImage img) { this.img = img; }
+
+    public java.awt.Graphics create() {
+        PS5Graphics2D g = new PS5Graphics2D(img);
+        g.color = color; g.background = background; g.paint = paint; g.composite = composite; g.tx = tx; g.ty = ty; g.clip = clip == null ? null : new Rectangle(clip);
+        return g;
+    }
+    public void dispose() { }
+
+    public void setColor(Color c) { if (c != null) { color = c; paint = c; } }
+    public Color getColor() { return color; }
+    public void setPaint(Paint p) { if (p instanceof Color) setColor((Color) p); else if (p != null) paint = p; }
+    public Paint getPaint() { return paint; }
+    public void setBackground(Color c) { background = c; }
+    public Color getBackground() { return background; }
+    public void setComposite(Composite c) { if (c == null) throw new IllegalArgumentException("null Composite"); composite = c; }
+    public Composite getComposite() { return composite; }
+    public void translate(int x, int y) { tx += x; ty += y; }
+    public void translate(double x, double y) { tx += (int) Math.round(x); ty += (int) Math.round(y); }
+    public void setClip(int x, int y, int w, int h) { clip = new Rectangle(x + tx, y + ty, w, h); }
+    public void clipRect(int x, int y, int w, int h) { Rectangle r = new Rectangle(x + tx, y + ty, w, h); clip = clip == null ? r : clip.intersection(r); }
+    public void setClip(Shape s) { if (s == null) clip = null; else { Rectangle b = s.getBounds(); clip = new Rectangle(b.x + tx, b.y + ty, b.width, b.height); } }
+    public Shape getClip() { return clip == null ? null : new Rectangle(clip.x - tx, clip.y - ty, clip.width, clip.height); }
+    public Rectangle getClipBounds() { return clip == null ? null : new Rectangle(clip.x - tx, clip.y - ty, clip.width, clip.height); }
+
+    private int rule() { return composite instanceof AlphaComposite ? ((AlphaComposite) composite).getRule() : AlphaComposite.SRC_OVER; }
+    private float extra() { return composite instanceof AlphaComposite ? ((AlphaComposite) composite).getAlpha() : 1f; }
+
+    /** Writes one pixel (device space) with the current composite. src is non-premultiplied ARGB. */
+    private void put(int x, int y, int src) {
+        if (x < 0 || y < 0 || x >= img.getWidth() || y >= img.getHeight()) return;
+        if (clip != null && !clip.contains(x, y)) return;
+        int r = rule(); float ea = extra();
+        int sa = src >>> 24;
+        if (ea < 1f) sa = Math.round(sa * ea);
+        if (r == AlphaComposite.SRC) { img.setRGB(x, y, (sa << 24) | (src & 0xFFFFFF)); return; }
+        if (r == AlphaComposite.CLEAR) { img.setRGB(x, y, 0); return; }
+        if (r != AlphaComposite.SRC_OVER) throw new UnsupportedOperationException("AlphaComposite rule " + r);
+        if (sa == 0) return;
+        if (sa == 255) { img.setRGB(x, y, 0xFF000000 | (src & 0xFFFFFF)); return; }
+        int dst = img.getRGB(x, y), da = dst >>> 24;
+        // non-premultiplied source-over: ra = sa + da (1 - sa); rc = (sc sa + dc da (1 - sa)) / ra
+        int ra255 = sa * 255 + da * (255 - sa);   // ra scaled by 255*255
+        if (ra255 == 0) return;
+        int out = Math.round(ra255 / 255f) << 24;
+        for (int sh = 16; sh >= 0; sh -= 8) {
+            int sc = (src >> sh) & 255, dc = (dst >> sh) & 255;
+            int num = sc * sa * 255 + dc * da * (255 - sa);
+            out |= Math.min(255, Math.round(num / (float) ra255)) << sh;
+        }
+        img.setRGB(x, y, out);
+    }
+
+    public void fillRect(int x, int y, int w, int h) {
+        int c = color.getRGB();
+        for (int j = 0; j < h; j++) for (int i = 0; i < w; i++) put(x + tx + i, y + ty + j, c);
+    }
+    public void clearRect(int x, int y, int w, int h) {
+        Composite old = composite; composite = AlphaComposite.Src; int c = background.getRGB();
+        for (int j = 0; j < h; j++) for (int i = 0; i < w; i++) put(x + tx + i, y + ty + j, c);
+        composite = old;
+    }
+    public void drawLine(int x1, int y1, int x2, int y2) {
+        int c = color.getRGB(), dx = Math.abs(x2 - x1), dy = Math.abs(y2 - y1), sx = x1 < x2 ? 1 : -1, sy = y1 < y2 ? 1 : -1, err = dx - dy;
+        for (;;) { put(x1 + tx, y1 + ty, c); if (x1 == x2 && y1 == y2) break; int e2 = 2 * err; if (e2 > -dy) { err -= dy; x1 += sx; } if (e2 < dx) { err += dx; y1 += sy; } }
+    }
+    public void drawRect(int x, int y, int w, int h) { if (w < 0 || h < 0) return; drawLine(x, y, x + w, y); drawLine(x + w, y, x + w, y + h); drawLine(x + w, y + h, x, y + h); drawLine(x, y + h, x, y); }
+
+    public boolean drawImage(Image im, int x, int y, ImageObserver o) { return im != null && drawScaled(im, x, y, x + im.getWidth(null), y + im.getHeight(null), 0, 0, im.getWidth(null), im.getHeight(null), null); }
+    public boolean drawImage(Image im, int x, int y, Color bg, ImageObserver o) { return im != null && drawScaled(im, x, y, x + im.getWidth(null), y + im.getHeight(null), 0, 0, im.getWidth(null), im.getHeight(null), bg); }
+    public boolean drawImage(Image im, int x, int y, int w, int h, ImageObserver o) { return im != null && drawScaled(im, x, y, x + w, y + h, 0, 0, im.getWidth(null), im.getHeight(null), null); }
+    public boolean drawImage(Image im, int x, int y, int w, int h, Color bg, ImageObserver o) { return im != null && drawScaled(im, x, y, x + w, y + h, 0, 0, im.getWidth(null), im.getHeight(null), bg); }
+    public boolean drawImage(Image im, int dx1, int dy1, int dx2, int dy2, int sx1, int sy1, int sx2, int sy2, ImageObserver o) { return drawScaled(im, dx1, dy1, dx2, dy2, sx1, sy1, sx2, sy2, null); }
+    public boolean drawImage(Image im, int dx1, int dy1, int dx2, int dy2, int sx1, int sy1, int sx2, int sy2, Color bg, ImageObserver o) { return drawScaled(im, dx1, dy1, dx2, dy2, sx1, sy1, sx2, sy2, bg); }
+
+    private boolean drawScaled(Image im, int dx1, int dy1, int dx2, int dy2, int sx1, int sy1, int sx2, int sy2, Color bg) {
+        if (!(im instanceof BufferedImage)) return false;
+        BufferedImage s = (BufferedImage) im;
+        int dw = dx2 - dx1, dh = dy2 - dy1;
+        if (dw == 0 || dh == 0 || sx1 == sx2 || sy1 == sy2) return true;
+        // corner (sx1, sy1) maps to (dx1, dy1) and (sx2, sy2) to (dx2, dy2): a destination corner that comes before the first one means a mirrored copy. Nearest neighbour at pixel centres.
+        int xa = Math.min(dx1, dx2), xb = Math.max(dx1, dx2), ya = Math.min(dy1, dy2), yb = Math.max(dy1, dy2);
+        for (int Y = ya; Y < yb; Y++) {
+            int sy = (int) Math.floor(sy1 + (Y + 0.5 - dy1) / dh * (sy2 - sy1));
+            if (sy < 0 || sy >= s.getHeight()) continue;
+            for (int X = xa; X < xb; X++) {
+                int sx = (int) Math.floor(sx1 + (X + 0.5 - dx1) / dw * (sx2 - sx1));
+                if (sx < 0 || sx >= s.getWidth()) continue;
+                int px = s.getRGB(sx, sy);
+                if (bg != null) put(X + tx, Y + ty, bg.getRGB());
+                put(X + tx, Y + ty, px);
+            }
+        }
+        return true;
+    }
+}
+//// FILE: sun/awt/PS5GraphicsEnvironment.java
+package sun.awt;
+
+import java.awt.Font;
+import java.awt.Graphics2D;
+import java.awt.GraphicsDevice;
+import java.awt.GraphicsEnvironment;
+import java.awt.HeadlessException;
+import java.awt.image.BufferedImage;
+import java.util.Locale;
+
+/** Java 8 only (-Djava.awt.graphicsenv=sun.awt.PS5GraphicsEnvironment, jvm_host.cpp): Java 8 has no PlatformGraphicsInfo, it creates the environment named by that property. Same body as PlatformGraphicsInfo.createGE. */
+public class PS5GraphicsEnvironment extends GraphicsEnvironment {
+    public GraphicsDevice[] getScreenDevices() throws HeadlessException { throw new HeadlessException(); }
+    public GraphicsDevice getDefaultScreenDevice() throws HeadlessException { throw new HeadlessException(); }
+    public Graphics2D createGraphics(BufferedImage img) { return new PS5Graphics2D(img); }
+    public Font[] getAllFonts() { return new Font[0]; }
+    public String[] getAvailableFontFamilyNames() { return new String[0]; }
+    public String[] getAvailableFontFamilyNames(Locale l) { return new String[0]; }
+}
+//// FILE: sun/awt/PS5GraphicsStubs.java
+package sun.awt;
+
+import java.awt.*;
+import java.awt.image.*;
+
+/** generated: every abstract method of java.awt.Graphics / Graphics2D with a do-nothing body; sun.awt.PS5Graphics2D overrides what it supports. */
+abstract class PS5GraphicsStubs extends Graphics2D {
+    public void addRenderingHints(java.util.Map p0) { }
+    public void clearRect(int p0, int p1, int p2, int p3) { }
+    public void clip(java.awt.Shape p0) { }
+    public void clipRect(int p0, int p1, int p2, int p3) { }
+    public void copyArea(int p0, int p1, int p2, int p3, int p4, int p5) { }
+    public java.awt.Graphics create() { return null; }
+    public void dispose() { }
+    public void draw(java.awt.Shape p0) { }
+    public void drawArc(int p0, int p1, int p2, int p3, int p4, int p5) { }
+    public void drawGlyphVector(java.awt.font.GlyphVector p0, float p1, float p2) { }
+    public boolean drawImage(java.awt.Image p0, int p1, int p2, int p3, int p4, int p5, int p6, int p7, int p8, java.awt.Color p9, java.awt.image.ImageObserver p10) { return false; }
+    public boolean drawImage(java.awt.Image p0, int p1, int p2, int p3, int p4, int p5, int p6, int p7, int p8, java.awt.image.ImageObserver p9) { return false; }
+    public boolean drawImage(java.awt.Image p0, int p1, int p2, int p3, int p4, java.awt.Color p5, java.awt.image.ImageObserver p6) { return false; }
+    public boolean drawImage(java.awt.Image p0, int p1, int p2, int p3, int p4, java.awt.image.ImageObserver p5) { return false; }
+    public boolean drawImage(java.awt.Image p0, int p1, int p2, java.awt.Color p3, java.awt.image.ImageObserver p4) { return false; }
+    public boolean drawImage(java.awt.Image p0, int p1, int p2, java.awt.image.ImageObserver p3) { return false; }
+    public boolean drawImage(java.awt.Image p0, java.awt.geom.AffineTransform p1, java.awt.image.ImageObserver p2) { return false; }
+    public void drawImage(java.awt.image.BufferedImage p0, java.awt.image.BufferedImageOp p1, int p2, int p3) { }
+    public void drawLine(int p0, int p1, int p2, int p3) { }
+    public void drawOval(int p0, int p1, int p2, int p3) { }
+    public void drawPolygon(int[] p0, int[] p1, int p2) { }
+    public void drawPolyline(int[] p0, int[] p1, int p2) { }
+    public void drawRenderableImage(java.awt.image.renderable.RenderableImage p0, java.awt.geom.AffineTransform p1) { }
+    public void drawRenderedImage(java.awt.image.RenderedImage p0, java.awt.geom.AffineTransform p1) { }
+    public void drawRoundRect(int p0, int p1, int p2, int p3, int p4, int p5) { }
+    public void drawString(java.lang.String p0, float p1, float p2) { }
+    public void drawString(java.lang.String p0, int p1, int p2) { }
+    public void drawString(java.text.AttributedCharacterIterator p0, float p1, float p2) { }
+    public void drawString(java.text.AttributedCharacterIterator p0, int p1, int p2) { }
+    public void fill(java.awt.Shape p0) { }
+    public void fillArc(int p0, int p1, int p2, int p3, int p4, int p5) { }
+    public void fillOval(int p0, int p1, int p2, int p3) { }
+    public void fillPolygon(int[] p0, int[] p1, int p2) { }
+    public void fillRect(int p0, int p1, int p2, int p3) { }
+    public void fillRoundRect(int p0, int p1, int p2, int p3, int p4, int p5) { }
+    public java.awt.Color getBackground() { return null; }
+    public java.awt.Shape getClip() { return null; }
+    public java.awt.Rectangle getClipBounds() { return null; }
+    public java.awt.Color getColor() { return null; }
+    public java.awt.Composite getComposite() { return null; }
+    public java.awt.GraphicsConfiguration getDeviceConfiguration() { return null; }
+    public java.awt.Font getFont() { return null; }
+    public java.awt.FontMetrics getFontMetrics(java.awt.Font p0) { return null; }
+    public java.awt.font.FontRenderContext getFontRenderContext() { return null; }
+    public java.awt.Paint getPaint() { return null; }
+    public java.lang.Object getRenderingHint(java.awt.RenderingHints.Key p0) { return null; }
+    public java.awt.RenderingHints getRenderingHints() { return null; }
+    public java.awt.Stroke getStroke() { return null; }
+    public java.awt.geom.AffineTransform getTransform() { return null; }
+    public boolean hit(java.awt.Rectangle p0, java.awt.Shape p1, boolean p2) { return false; }
+    public void rotate(double p0) { }
+    public void rotate(double p0, double p1, double p2) { }
+    public void scale(double p0, double p1) { }
+    public void setBackground(java.awt.Color p0) { }
+    public void setClip(int p0, int p1, int p2, int p3) { }
+    public void setClip(java.awt.Shape p0) { }
+    public void setColor(java.awt.Color p0) { }
+    public void setComposite(java.awt.Composite p0) { }
+    public void setFont(java.awt.Font p0) { }
+    public void setPaint(java.awt.Paint p0) { }
+    public void setPaintMode() { }
+    public void setRenderingHint(java.awt.RenderingHints.Key p0, java.lang.Object p1) { }
+    public void setRenderingHints(java.util.Map p0) { }
+    public void setStroke(java.awt.Stroke p0) { }
+    public void setTransform(java.awt.geom.AffineTransform p0) { }
+    public void setXORMode(java.awt.Color p0) { }
+    public void shear(double p0, double p1) { }
+    public void transform(java.awt.geom.AffineTransform p0) { }
+    public void translate(double p0, double p1) { }
+    public void translate(int p0, int p1) { }
+}
+//// FILE: sun/awt/PS5Toolkit.java
+package sun.awt;
+
+import java.awt.*;
+import java.awt.image.*;
+
+/** generated: every abstract method of java.awt.Toolkit with a do-nothing body. A Toolkit object is only needed so that Toolkit.getDefaultToolkit() works; it is wrapped in the HeadlessToolkit (clipboard etc. throw HeadlessException, which Minecraft catches). */
+public class PS5Toolkit extends Toolkit {
+    public void beep() { }
+    public int checkImage(java.awt.Image p0, int p1, int p2, java.awt.image.ImageObserver p3) { return 0; }
+    public java.awt.Image createImage(byte[] p0, int p1, int p2) { return null; }
+    public java.awt.Image createImage(java.awt.image.ImageProducer p0) { return null; }
+    public java.awt.Image createImage(java.lang.String p0) { return null; }
+    public java.awt.Image createImage(java.net.URL p0) { return null; }
+    public java.awt.image.ColorModel getColorModel() { return null; }
+    public java.lang.String[] getFontList() { return null; }
+    public java.awt.FontMetrics getFontMetrics(java.awt.Font p0) { return null; }
+    public java.awt.Image getImage(java.lang.String p0) { return null; }
+    public java.awt.Image getImage(java.net.URL p0) { return null; }
+    public java.awt.PrintJob getPrintJob(java.awt.Frame p0, java.lang.String p1, java.util.Properties p2) { return null; }
+    public int getScreenResolution() { return 96; }
+    public java.awt.Dimension getScreenSize() { return new Dimension(1920, 1080); }
+    public java.awt.datatransfer.Clipboard getSystemClipboard() { return null; }
+    protected java.awt.EventQueue getSystemEventQueueImpl() { return null; }
+    public boolean isModalExclusionTypeSupported(java.awt.Dialog.ModalExclusionType p0) { return false; }
+    public boolean isModalityTypeSupported(java.awt.Dialog.ModalityType p0) { return false; }
+    public java.util.Map mapInputMethodHighlight(java.awt.im.InputMethodHighlight p0) { return null; }
+    public boolean prepareImage(java.awt.Image p0, int p1, int p2, java.awt.image.ImageObserver p3) { return false; }
+    public void sync() { }
+}
+//// FILE: sun/awt/PlatformGraphicsInfo.java
+package sun.awt;
+
+import java.awt.Font;
+import java.awt.Graphics2D;
+import java.awt.GraphicsDevice;
+import java.awt.GraphicsEnvironment;
+import java.awt.HeadlessException;
+import java.awt.Toolkit;
+import java.awt.image.BufferedImage;
+import java.util.Locale;
+
+/** PS5 stub: there is no AWT (no natives, no display). Everything reports "headless"; images are drawn in software by PS5Graphics2D. */
+public class PlatformGraphicsInfo {
+    public static GraphicsEnvironment createGE() {
+        return new GraphicsEnvironment() {
+            public GraphicsDevice[] getScreenDevices() throws HeadlessException { throw new HeadlessException(); }
+            public GraphicsDevice getDefaultScreenDevice() throws HeadlessException { throw new HeadlessException(); }
+            public Graphics2D createGraphics(BufferedImage img) { return new PS5Graphics2D(img); }
+            public Font[] getAllFonts() { return new Font[0]; }
+            public String[] getAvailableFontFamilyNames() { return new String[0]; }
+            public String[] getAvailableFontFamilyNames(Locale l) { return new String[0]; }
+        };
+    }
+    public static Toolkit createToolkit() { return new PS5Toolkit(); }
+    public static boolean getDefaultHeadlessProperty() { return true; }
+    public static String getDefaultHeadlessMessage() { return "This platform has no AWT support."; }
+}

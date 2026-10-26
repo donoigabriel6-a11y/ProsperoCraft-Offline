@@ -1,0 +1,77 @@
+//// FILE: java/awt/Frame.java
+package java.awt;
+
+import java.awt.event.WindowFocusListener;
+import java.awt.event.WindowListener;
+import java.awt.event.WindowStateListener;
+import java.util.ArrayList;
+import java.util.List;
+
+/** Java 8 only (build_awtlite.sh 8, jar in front of rt.jar). The console has no windowing system: the real Frame/Window constructors throw HeadlessException, and Minecraft 1.0 - 1.5
+ *  builds a Frame + Canvas in Minecraft.main before it hands the Canvas to LWJGL's Display.setParent. This Frame is a plain Container with the Frame API Minecraft calls: pack() sizes and lays it out
+ *  (so the Canvas gets its preferred size), the window methods are no-ops, nothing is ever shown or has a peer. */
+public class Frame extends Container implements MenuContainer {
+    public static final int DEFAULT_CURSOR = 0, CROSSHAIR_CURSOR = 1, TEXT_CURSOR = 2, WAIT_CURSOR = 3, SW_RESIZE_CURSOR = 4, SE_RESIZE_CURSOR = 5, NW_RESIZE_CURSOR = 6,
+        NE_RESIZE_CURSOR = 7, N_RESIZE_CURSOR = 8, S_RESIZE_CURSOR = 9, W_RESIZE_CURSOR = 10, E_RESIZE_CURSOR = 11, HAND_CURSOR = 12, MOVE_CURSOR = 13;
+    public static final int NORMAL = 0, ICONIFIED = 1, MAXIMIZED_HORIZ = 2, MAXIMIZED_VERT = 4, MAXIMIZED_BOTH = 6;
+    private static final List<Frame> FRAMES = new ArrayList<Frame>();
+    private String title = "";
+    private boolean resizable = true, undecorated, shown, alwaysOnTop;
+    private int state;
+    private Image icon;
+    private final List<WindowListener> wl = new ArrayList<WindowListener>();
+
+    public Frame() { this(""); }
+    public Frame(String title) { this.title = title == null ? "" : title; setLayout(new BorderLayout()); synchronized (FRAMES) { FRAMES.add(this); } }
+    public Frame(GraphicsConfiguration gc) { this(""); }
+    public Frame(String title, GraphicsConfiguration gc) { this(title); }
+
+    public String getTitle() { return title; }
+    public void setTitle(String t) { title = t == null ? "" : t; }
+    public boolean isResizable() { return resizable; }
+    public void setResizable(boolean r) { resizable = r; }
+    public boolean isUndecorated() { return undecorated; }
+    public void setUndecorated(boolean u) { undecorated = u; }
+    public int getState() { return (state & ICONIFIED) != 0 ? ICONIFIED : NORMAL; }
+    public void setState(int s) { state = s; }
+    public int getExtendedState() { return state; }
+    public void setExtendedState(int s) { state = s; }
+    public Image getIconImage() { return icon; }
+    public void setIconImage(Image i) { icon = i; }
+    public void setIconImages(List<? extends Image> l) { icon = l == null || l.isEmpty() ? null : l.get(0); }
+    public void setMenuBar(MenuBar mb) {}
+    public MenuBar getMenuBar() { return null; }
+    public void remove(MenuComponent m) {}
+    public void setCursor(int c) {}
+    public int getCursorType() { return DEFAULT_CURSOR; }
+    public static Frame[] getFrames() { synchronized (FRAMES) { return FRAMES.toArray(new Frame[0]); } }
+
+    /** The console's one window is the whole screen: pack() sizes the Frame to it (ps5.awt.width / ps5.awt.height, default 1920x1080) instead of to the 854x480 Minecraft asks for, so the game picks that size up from its Canvas. */
+    public void pack() { setSize(Integer.getInteger("ps5.awt.width", 1920), Integer.getInteger("ps5.awt.height", 1080)); doLayout(); }
+    public void validate() { doLayout(); }
+    public void setVisible(boolean b) { shown = b; if (b) doLayout(); }
+    public void show() { setVisible(true); }
+    public void hide() { setVisible(false); }
+    public boolean isVisible() { return shown; }
+    public boolean isShowing() { return shown; }
+    public boolean isDisplayable() { return false; }
+    public boolean isFocused() { return shown; }
+    public boolean isActive() { return shown; }
+    public void dispose() { shown = false; synchronized (FRAMES) { FRAMES.remove(this); } }
+    public void toFront() {}
+    public void toBack() {}
+    public void setAlwaysOnTop(boolean b) { alwaysOnTop = b; }
+    public boolean isAlwaysOnTop() { return alwaysOnTop; }
+    public void setLocationRelativeTo(Component c) {}
+    public void setLocationByPlatform(boolean b) {}
+    public void addWindowListener(WindowListener l) { if (l != null) wl.add(l); }
+    public void removeWindowListener(WindowListener l) { wl.remove(l); }
+    public WindowListener[] getWindowListeners() { return wl.toArray(new WindowListener[0]); }
+    public void addWindowFocusListener(WindowFocusListener l) {}
+    public void removeWindowFocusListener(WindowFocusListener l) {}
+    public void addWindowStateListener(WindowStateListener l) {}
+    public void removeWindowStateListener(WindowStateListener l) {}
+    public Window getOwner() { return null; }
+    public Window[] getOwnedWindows() { return new Window[0]; }
+    public String paramString() { return "frame0,title=" + title; }
+}

@@ -26,8 +26,24 @@ Sign-in uses the standard Microsoft device-code flow (scope `XboxLive.signin off
 
 It is a public client (no client secret). The only thing stored is the player's own refresh token, on their own device.
 
+## Repository layout
+
+```
+src/host      Java host (jvm_host.cpp)
+src/shim      LWJGL / GLFW / SDL / Vulkan shim (C)
+src/java      game launch, mods, sign-in, launcher logic
+src/awtlite   minimal AWT        src/lwjgl2   LWJGL 2 port
+launcher/     native controller-driven launcher UI (C++)
+tools/        build.sh, sync.sh, build + debug scripts
+config/       log4j2 and mod option defaults
+tests/        sandbox tests (no console needed)
+docs/         BUILDING.md, ARCHITECTURE.md
+```
+
+Build: see [docs/BUILDING.md](docs/BUILDING.md) (`MSA_CLIENT_ID=<id> bash tools/build.sh <PC ip> <PS5 ip>`). Design notes: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
 ## Status
 
-Work in progress.
+Work in progress. Working on console: Minecraft Java 1.x up to 26.3 on OpenGL, OpenGL via Zink (shaders) and Vulkan; Fabric / Quilt / Forge / NeoForge mods; launcher with instances, Microsoft sign-in, global memory setting; Zink launcher to Vulkan game without restarting the app.
 
 *Not affiliated with Mojang Studios, Microsoft, or Sony Interactive Entertainment. Minecraft is a trademark of Mojang Synergies AB.*

@@ -11,4 +11,6 @@ get() {  # get <url> <dir> <commit>
 # Vulkan / RADV project and template (mihawk-99)
 get https://github.com/mihawk-99/PS5_Vulkan.git "$HOME/PS5_Vulkan" f410e67
 get https://github.com/mihawk-99/PS5_VulkanTemplate "$HOME/PS5_VulkanTemplate" 91179df7
+# Our edited file of the template (stored whole in third_party/)
+cp -f "$REPO/third_party/PS5_VulkanTemplate/ps5/tools/link-title.sh" "$HOME/PS5_VulkanTemplate/ps5/tools/link-title.sh"
 echo "next: bash tools/sync.sh (copies this repo into ~/ps5-mc-java), then tools/build.sh"

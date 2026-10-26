@@ -28,8 +28,14 @@ A non-commercial, hobby launcher and runtime for **Minecraft: Java Edition** on 
   | Vulkan | Minecraft's own Vulkan backend (26.2+), or VulkanMod | the newest versions |
 
 - **Zink launcher → Vulkan game without restarting the app**: the launcher's loading screen stays up while the game starts, then the display changes hands.
-- **Controller emulation**: the DualSense acts as keyboard and mouse (touchpad = cursor); USB keyboard and mouse work too.
+- **Input**: DualSense controller, or a **USB keyboard and mouse** (see [Input](#input)).
 - **One global Memory setting** in the launcher (up to 8 GB).
+
+## Input
+
+- **USB keyboard and mouse** are supported. Plug them into the console and play like on a PC (look, scroll, drag, typing in chat and menus).
+- **DualSense controller**: it is emulated as a keyboard and mouse (the touchpad moves the cursor), so it works in every version, including ones with no controller support.
+- Mods that replace the input layer (for example Ixeris and Controlify) fight with this emulation, so the launcher sets them aside automatically.
 
 ## Mod loaders
 

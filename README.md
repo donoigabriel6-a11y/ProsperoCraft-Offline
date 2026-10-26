@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="title/sce_sys/icon0.png" alt="ProsperoCraft" width="160">
+
 # ProsperoCraft
 
 **Minecraft: Java Edition on a PS5 with homebrew** — a controller-driven launcher, a real JVM, and three renderers.
@@ -8,7 +10,12 @@
 ![Platform](https://img.shields.io/badge/platform-PS5%20homebrew-003791)
 ![Java](https://img.shields.io/badge/Java-8%20%7C%2017%20%7C%2021%20%7C%2025-orange)
 ![Renderers](https://img.shields.io/badge/renderers-OpenGL%20%7C%20Zink%20%7C%20Vulkan-green)
-![Status](https://img.shields.io/badge/status-work%20in%20progress-yellow)
+![Status](https://img.shields.io/badge/status-paused-lightgrey)
+[![Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/tmghd272)
+
+<img src="docs/assets/gameplay.gif" alt="ProsperoCraft gameplay" width="720">
+
+<sub><i>Captured on a base-model PS5 running Minecraft Java 26.3 with Fabric and the Complementary Shaders (Reimagined), at a render distance of 32 and a 4K render resolution.</i></sub>
 
 </div>
 
@@ -131,6 +138,6 @@ ProsperoCraft is an unofficial, non-commercial hobby project. It is **not affili
 
 **Enjoying ProsperoCraft?** It was built for fun, and a coffee helps.
 
-[![Support me on Ko-fi](https://img.shields.io/badge/Ko--fi-Support%20me-FF5E5B?style=for-the-badge&logo=ko-fi&logoColor=white)](https://ko-fi.com/tmghd272)
+[![Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/tmghd272)
 
 </div>

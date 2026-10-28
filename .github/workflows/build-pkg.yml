@@ -69,11 +69,7 @@ jobs:
         id: pkg
         run: |
           # The build creates dist/<TITLE_ID>.ffpkg
-          TITLE_ID=$(python3 -c "
-import json
-with open('title/sce_sys/param.json') as f:
-    print(json.load(f)['titleId'])
-")
+          TITLE_ID=$(python3 -c "import json; print(json.load(open('title/sce_sys/param.json'))['titleId'])")
           PKG_FILE="$BUILD_DIR/dist/${TITLE_ID}.ffpkg"
           if [ ! -f "$PKG_FILE" ]; then
             echo "Error: .pkg not found at $PKG_FILE" >&2

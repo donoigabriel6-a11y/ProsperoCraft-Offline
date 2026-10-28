@@ -58,11 +58,15 @@ jobs:
           bash tools/sync.sh --build-dir "$BUILD_DIR"
 
       - name: Build .pkg (launcher + mc + native UI)
+        env:
+          PS5_HOST: ${{ secrets.PS5_HOST }}
         run: |
           cd "$BUILD_DIR"
           # Build options: jit gl mc launcher sdk100 nativeui
           # Add vk for Vulkan/Zink support
-          bash ../tools/build.sh "${{ env.PS5_HOST || echo '127.0.0.1' }}" "${{ env.PS5_HOST || echo '127.0.0.1' }}" \
+          # Use shell default if PS5_HOST not set
+          PS5_HOST="${PS5_HOST:-127.0.0.1}"
+          bash ../tools/build.sh "$PS5_HOST" "$PS5_HOST" \
             --build-dir "$BUILD_DIR" -- jit gl mc launcher sdk100 nativeui
 
       - name: Find built .pkg file

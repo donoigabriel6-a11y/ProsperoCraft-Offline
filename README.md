@@ -2,7 +2,7 @@
 
 <img src="title/sce_sys/icon0.png" alt="ProsperoCraft" width="160">
 
-# ProsperoCraft
+# ProsperoCraft-Offline
 
 **Minecraft: Java Edition on a PS5 with homebrew** — a controller-driven launcher, a real JVM, and three renderers.
 

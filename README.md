@@ -121,6 +121,55 @@ Needs WSL, the PS5 payload SDK and the Vulkan project, see [docs/BUILDING.md](do
 MSA_CLIENT_ID=<your Azure app id> bash tools/build.sh <PC ip> <PS5 ip>
 ```
 
+### Manual Build + exFAT USB Image
+
+For creating a distributable exFAT disk image with the `.pkg` file (for USB installation on PS5):
+
+```bash
+# 1. Build the .pkg file locally (no PS5 needed for this step)
+cd title
+make ffpkg        # creates dist/PPSA27272.ffpkg
+
+# 2. Create exFAT disk image (requires exfatprogs / dosfstools)
+# From repo root:
+bash build_exfat.sh --size 512 --output ProsperoCraft.img
+
+# 3. Write to USB drive
+sudo dd if=ProsperoCraft.img of=/dev/sdX bs=4M status=progress conv=fsync
+# (replace /dev/sdX with your USB device)
+```
+
+Or use the full build script that also deploys to PS5:
+
+```bash
+# Build + deploy to PS5 + create exFAT image in one command
+MSA_CLIENT_ID=<your Azure app id> bash build_full_exfat.sh <PC_IP> <PS5_IP> -- jit gl mc launcher sdk100 nativeui
+```
+
+**Windows/PowerShell** (run in WSL):
+```powershell
+# In WSL terminal:
+wsl bash build_exfat.sh
+
+# Or manually:
+# 1. Build in WSL
+wsl -d <distro> 'cd /mnt/c/.../title && make ffpkg'
+# 2. Format USB as exFAT in Windows (right-click > Format > exFAT)
+# 3. Copy .pkg file to USB
+```
+
+### What the exFAT Image Contains
+
+- `${TITLE_ID}.pkg` — the installable PS5 package
+- `README.txt` — installation instructions
+
+### Installing on PS5
+
+1. Insert USB drive into PS5
+2. Settings → System → System Software → Install Package Files
+3. Select "Install from USB Drive"
+4. Choose the `.pkg` file and install
+
 Design notes: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Continuing this with an AI assistant? Start from [docs/ai/HANDOFF.md](docs/ai/HANDOFF.md) and [docs/ai/NEW_CHAT_PROMPT.md](docs/ai/NEW_CHAT_PROMPT.md).
 
 ## Credits

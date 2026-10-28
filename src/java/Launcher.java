@@ -120,8 +120,26 @@ public class Launcher {
         String acc = i.get("account", "");
         if (acc.isEmpty() || acc.equals("offline")) acc = load(new File(root, "launcher.cfg")).getProperty("account", "").trim();
         log("session: account instance.cfg='" + i.get("account", "") + "' launcher.cfg='" + load(new File(root, "launcher.cfg")).getProperty("account", "").trim() + "' -> '" + acc + "' (root " + root + ")");
-        if (!acc.isEmpty() && !acc.equals("offline")) try { McAuth.Session s = McAuth.sessionFor(root, acc.equals("active") ? "" : acc); log("signed in as " + s.name); return s; }
-            catch (Throwable t) { log("account " + acc + " unavailable (" + t.getMessage() + "), playing offline"); }
+        if (!acc.isEmpty() && !acc.equals("offline")) {
+            if (acc.equals("demo")) {
+                // Demo mode: return a demo session
+                String un = i.get("username", load(new File(root, "launcher.cfg")).getProperty("username", "Demo Player").trim()).replaceAll("[^A-Za-z0-9_]", "");
+                return McAuth.demo(un.length() < 3 ? "Demo Player" : un.length() > 16 ? un.substring(0, 16) : un);
+            }
+            try { McAuth.Session s = McAuth.sessionFor(root, acc.equals("active") ? "" : acc); log("signed in as " + s.name); return s; }
+            catch (Throwable t) {
+                // Check if the error indicates demo mode
+                if (t.getMessage() != null && t.getMessage().contains("demo")) {
+                    log("account " + acc + " does not own Minecraft, enabling demo mode");
+                    Properties g = load(new File(root, "launcher.cfg"));
+                    g.setProperty("account", "demo");
+                    save(new File(root, "launcher.cfg"), g);
+                    String un = i.get("username", load(new File(root, "launcher.cfg")).getProperty("username", "Demo Player").trim()).replaceAll("[^A-Za-z0-9_]", "");
+                    return McAuth.demo(un.length() < 3 ? "Demo Player" : un.length() > 16 ? un.substring(0, 16) : un);
+                }
+                log("account " + acc + " unavailable (" + t.getMessage() + "), playing offline");
+            }
+        }
         String un = i.get("username", load(new File(root, "launcher.cfg")).getProperty("username", "Player").trim()).replaceAll("[^A-Za-z0-9_]", "");
         return McAuth.offline(un.length() < 3 ? "Player" : un.length() > 16 ? un.substring(0, 16) : un);
     }

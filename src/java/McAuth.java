@@ -8,7 +8,10 @@ import java.util.*;
 // A client id is required (launcher.cfg msaClientId=, or -Dps5.msa.clientid): register a free Azure app as a PUBLIC client with device-code flow allowed. Mojang also has to approve third-party app ids for the
 // Minecraft services endpoint; an unapproved id is refused at the last steps (log: "login_with_xbox ... HTTP 403").
 public class McAuth {
-    static final class Session { String name, uuid, token, type; }
+    static final class Session {
+        String name, uuid, token, type;
+        boolean demo = false;
+    }
     static String base(String key, String dflt) { String b = System.getProperty("ps5.auth.base"); return b != null ? b + "/" + key : dflt; }
     static String ms() { return base("ms", "https://login.microsoftonline.com"); }
     static String live() { return base("live", "https://login.live.com"); }
@@ -71,6 +74,11 @@ public class McAuth {
         if (tok == null) throw new IOException("login expired (the code ran out)");
         Properties p = Launcher.load(accountsFile(root));
         String id = chain(p, McDownload.str(tok.get("access_token")), McDownload.str(tok.get("refresh_token")), lg);
+        if ("demo".equals(id)) {
+            // Demo mode: don't save as an account, just return "demo"
+            log("signed in (demo mode)");
+            return "demo";
+        }
         p.setProperty("active", id);
         Launcher.save(accountsFile(root), p);
         skin(root, p, id);
@@ -78,7 +86,8 @@ public class McAuth {
         return id;
     }
 
-    /** MSA access token -> Minecraft token + profile, written into p under the profile's uuid; returns that id */
+    /** MSA access token -> Minecraft token + profile, written into p under the profile's uuid; returns that id.
+     *  Returns "demo" if the account doesn't own Minecraft (demo mode), throws on other errors. */
     static String chain(Properties p, String msaAccess, String refresh, boolean legacy) throws Exception {
         Map<String, Object> x = json(McDownload.http("POST", xbl() + "/user/authenticate",
             "{\"Properties\":{\"AuthMethod\":\"RPS\",\"SiteName\":\"user.auth.xboxlive.com\",\"RpsTicket\":" + jq((legacy ? "t=" : "d=") + msaAccess) + "},\"RelyingParty\":\"http://auth.xboxlive.com\",\"TokenType\":\"JWT\"}", JSON), "Xbox Live");
@@ -90,7 +99,11 @@ public class McAuth {
         Map<String, Object> m = json(McDownload.http("POST", mc() + "/authentication/login_with_xbox", "{\"identityToken\":" + jq("XBL3.0 x=" + uhs + ";" + xstsToken) + "}", JSON), "login_with_xbox");
         String mcToken = McDownload.str(m.get("access_token")); long ttl = McDownload.num(m.get("expires_in"));
         McDownload.Resp pr = McDownload.http("GET", mc() + "/minecraft/profile", null, null, "Authorization", "Bearer " + mcToken);
-        if (pr.code == 404) throw new IOException("this Microsoft account does not own Minecraft: Java Edition");
+        if (pr.code == 404) {
+            // Account doesn't own Minecraft: return "demo" to indicate demo mode
+            log("account does not own Minecraft: enabling demo mode");
+            return "demo";
+        }
         Map<String, Object> prof = json(pr, "profile");
         String id = McDownload.str(prof.get("id"));
         p.setProperty(id + ".name", McDownload.str(prof.get("name"))); p.setProperty(id + ".uuid", id);
@@ -121,15 +134,15 @@ public class McAuth {
 
     /** the "skin" command: make sure the face source of an account exists (the launcher asks once per account) */
     public static void skinFor(String root, String id) {
+        if (id == null || id.isEmpty() || id.equals("offline") || id.equals("demo")) return;
         Properties p = Launcher.load(accountsFile(root));
-        if (id == null || id.isEmpty() || id.equals("offline")) return;
         skin(root, p, id);
     }
 
     /** forget an account: its tokens, name and skin; the active account falls back to offline */
     public static void signOut(String root, String id) throws IOException {
+        if (id == null || id.isEmpty() || id.equals("offline") || id.equals("demo")) return;
         Properties p = Launcher.load(accountsFile(root));
-        if (id == null || id.isEmpty() || id.equals("offline")) return;
         for (String k : new ArrayList<>(p.stringPropertyNames())) if (k.startsWith(id + ".")) p.remove(k);
         if (id.equals(p.getProperty("active", ""))) p.remove("active");
         Launcher.save(accountsFile(root), p);
@@ -143,7 +156,18 @@ public class McAuth {
     public static Session sessionFor(String root, String id) throws Exception {
         Properties p = Launcher.load(accountsFile(root));
         if (id == null || id.isEmpty()) id = p.getProperty("active", "");
-        if (id.isEmpty() || p.getProperty(id + ".name") == null) throw new IOException("no such account: " + id);
+        if (id.isEmpty() || p.getProperty(id + ".name") == null) {
+            // Check if it's demo mode
+            Properties g = Launcher.load(new File(root, "launcher.cfg"));
+            if ("demo".equals(g.getProperty("account", "").trim())) {
+                return demo("Demo Player");
+            }
+            throw new IOException("no such account: " + id);
+        }
+        // Check if this is a demo account
+        if ("demo".equals(id)) {
+            return demo(p.getProperty("demo.name", "Demo Player"));
+        }
         long exp = Long.parseLong(p.getProperty(id + ".mcExpires", "0"));
         if (exp < System.currentTimeMillis() / 1000 + 120) {
             String cid = clientId(root), rt = p.getProperty(id + ".refresh", "");
@@ -153,6 +177,13 @@ public class McAuth {
                 ? json(McDownload.http("POST", live() + "/oauth20_token.srf", "grant_type=refresh_token&client_id=" + enc(cid) + "&refresh_token=" + enc(rt) + "&scope=" + enc(LEGACY_SCOPE), FORM), "token refresh")
                 : json(McDownload.http("POST", ms() + "/consumers/oauth2/v2.0/token", "grant_type=refresh_token&client_id=" + enc(cid) + "&refresh_token=" + enc(rt) + "&scope=" + enc("XboxLive.signin offline_access"), FORM), "token refresh");
             String nid = chain(p, McDownload.str(t.get("access_token")), McDownload.str(t.get("refresh_token")), lg);
+            if ("demo".equals(nid)) {
+                // Token refresh revealed demo mode
+                Properties g = Launcher.load(new File(root, "launcher.cfg"));
+                g.setProperty("account", "demo");
+                Launcher.save(new File(root, "launcher.cfg"), g);
+                return demo(p.getProperty(id + ".name"));
+            }
             id = nid; Launcher.save(accountsFile(root), p);
         }
         skin(root, p, id);
@@ -161,5 +192,8 @@ public class McAuth {
     }
     public static Session offline(String name) {
         Session s = new Session(); s.name = name; s.uuid = UUID.nameUUIDFromBytes(("OfflinePlayer:" + name).getBytes(StandardCharsets.UTF_8)).toString().replace("-", ""); s.token = "0"; s.type = "legacy"; return s;
+    }
+    public static Session demo(String name) {
+        Session s = new Session(); s.name = name; s.uuid = UUID.nameUUIDFromBytes(("DemoPlayer:" + name).getBytes(StandardCharsets.UTF_8)).toString().replace("-", ""); s.token = "0"; s.type = "demo"; s.demo = true; return s;
     }
 }

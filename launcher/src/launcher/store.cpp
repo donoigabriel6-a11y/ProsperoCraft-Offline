@@ -273,6 +273,20 @@ Store Store::load(const std::string &root)
             s.account = trim(it->second);
         if (const auto it = cfg.find("username"); it != cfg.end() && !trim(it->second).empty())
             s.username = trim(it->second);
+        if (const auto it = cfg.find("offlineProfiles"); it != cfg.end() && !trim(it->second).empty())
+        {
+            std::string profiles = trim(it->second);
+            std::size_t start = 0;
+            while (start < profiles.size())
+            {
+                std::size_t end = profiles.find(',', start);
+                if (end == std::string::npos) end = profiles.size();
+                std::string name = profiles.substr(start, end - start);
+                if (!name.empty())
+                    s.offlineProfiles.push_back(name);
+                start = end + 1;
+            }
+        }
     }
     if (s.current.empty())
         s.current = "default";
@@ -559,6 +573,28 @@ std::string Store::runtime() const
     const auto p = parse_properties(text);
     const auto it = p.find("java");
     return it == p.end() ? "" : it->second;
+}
+
+bool Store::save_offline_profiles() const
+{
+    if (root.empty())
+        return true;
+    std::string text;
+    std::map<std::string, std::string> cfg;
+    if (read_file(root + "/launcher.cfg", text))
+        cfg = parse_properties(text);
+    std::string profiles;
+    for (size_t i = 0; i < offlineProfiles.size(); ++i)
+    {
+        if (i > 0) profiles += ",";
+        profiles += offlineProfiles[i];
+    }
+    if (profiles.empty())
+        cfg.erase("offlineProfiles");
+    else
+        cfg["offlineProfiles"] = profiles;
+    make_dirs(root);
+    return write_file_atomic(root + "/launcher.cfg", write_properties(cfg));
 }
 
 } // namespace hui::launcher

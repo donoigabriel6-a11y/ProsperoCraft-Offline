@@ -32,6 +32,7 @@ extern "C" int ps5_java_expect(int forced) __attribute__((weak));   // jvm_host.
 #include "launcher/store.hpp"
 #include "ui/components/form.hpp"
 #include "ui/components/keyboard.hpp"
+#include "ui/components/profile_picker.hpp"
 #include "ui/glyphs.hpp"
 #include "ui/motion.hpp"
 
@@ -1664,6 +1665,39 @@ class Launcher final : public app::Concept
             if (submit_job("account use offline"))
                 status("Playing offline");
         }
+        // Handle ProfilePicker for offline mode (also demo mode)
+        if (mode_ == Mode::account && profilePickerActive_ && !store_.account.empty() && (store_.account == "offline" || store_.account == "demo"))
+        {
+            const ui::Event pickerEv = profilePicker_.handle(input, *feedback_);
+            if (pickerEv == ui::Event::activated)
+            {
+                if (profilePicker_.add_focused())
+                {
+                    // Add new profile
+                    open_keyboard(4, store_.username, "New profile name", 16);
+                    // We'll handle the result in update_keyboard
+                }
+                else
+                {
+                    // Select existing profile
+                    int idx = profilePicker_.focus();
+                    if (idx >= 0 && idx < (int)store_.offlineProfiles.size())
+                    {
+                        const std::string &name = store_.offlineProfiles[idx];
+                        store_.username = name;
+                        if (submit_job("config username " + name))
+                            status("Playing as " + name);
+                        // Rebuild to update the profile picker
+                        build_account_form();
+                    }
+                }
+            }
+            else if (pickerEv == ui::Event::cancelled)
+            {
+                // Keep profile picker active
+            }
+            profilePicker_.update(dt);
+        }
         if (mode_ == Mode::account)
             poll_login_code(dt);
     }
@@ -1704,7 +1738,7 @@ class Launcher final : public app::Concept
     }
     bool signed_in_now() const
     {
-        return !(store_.account == "offline" || store_.account.empty());
+        return !(store_.account == "offline" || store_.account == "demo" || store_.account.empty());
     }
     // the second line of a shelf card / the page header; the Accounts tool shows who is signed in
     std::string meta_of(const Entry &e) const
@@ -1737,7 +1771,7 @@ class Launcher final : public app::Concept
     // the signed-in account's display name: accounts.properties has <id>.name=<name>
     std::string account_label() const
     {
-        if (store_.account == "offline" || store_.account.empty() || store_.root.empty())
+        if (store_.account == "offline" || store_.account == "demo" || store_.account.empty() || store_.root.empty())
             return "Offline";
         const std::string key = store_.account + ".name=";
         const std::string text = read_small_file(store_.root + "/accounts.properties");
@@ -1781,7 +1815,7 @@ class Launcher final : public app::Concept
         login_shown_ = now;
         if (ui::FormRow *sr = form_.row(kSignIn))
         {
-            const bool signed_in = !(store_.account == "offline" || store_.account.empty());
+            const bool signed_in = !(store_.account == "offline" || store_.account == "demo" || store_.account.empty());
             sr->label = waiting ? "Cancel sign-in" : signed_in ? "Sign in with another account" : "Sign in with Microsoft";
         }
         if (ui::FormRow *c = form_.row(kInfo1))
@@ -3162,6 +3196,28 @@ class Launcher final : public app::Concept
             }
             if (text == store_.username)
                 return;
+
+            // Check if we're adding a new profile via ProfilePicker
+            if (mode_ == Mode::account && profilePickerActive_ && (store_.account == "offline" || store_.account == "demo"))
+            {
+                // Add to offlineProfiles if not already present
+                bool exists = false;
+                for (const auto &p : store_.offlineProfiles)
+                {
+                    if (p == text) { exists = true; break; }
+                }
+                if (!exists)
+                {
+                    store_.offlineProfiles.push_back(text);
+                    store_.save_offline_profiles();
+                }
+                store_.username = text;
+                if (submit_job("config username " + text))
+                    status("Added profile: " + text);
+                build_account_form();
+                return;
+            }
+
             if (jobs_.busy())   // an install is running: keep the name now, write it when the downloader is free
             {
                 store_.username = text;
@@ -3528,35 +3584,104 @@ class Launcher final : public app::Concept
     {
         style_form();
         form_.style.focus_values = true; // read-only rows take the focus and are dimmed; without a focused row the form ignored every button, Back included
-        const bool signed_in = !(store_.account == "offline" || store_.account.empty());
-        form_.add_header("Playing as");
-        form_.add_value(kAccount, "Account", account_label()).description =
-            signed_in ? "Signed in with Microsoft: online play and servers that check accounts work." : "Offline play: single player, LAN, and servers that allow offline accounts.";
-        form_.add_action(kUsername, "Offline username: " + store_.username).description =
-            "The name you play under offline: 3 to 16 letters, digits or underscores. A different name is a different player in worlds that already exist.";
-        form_.add_header("Microsoft");
-        form_.add_action(kSignIn, signed_in ? "Sign in with another account" : "Sign in with Microsoft").description =
-            "Shows a code. Open the page on a phone or PC, type the code and sign in with the account that owns Minecraft: Java Edition. Takes a minute.";
-        form_.add_value(kInfo1, "Sign-in code", "None").description = "Appears here while you sign in.";
-        form_.add_value(kInfo2, "Open this page", "None").description = "The page to open on a phone or PC.";
-        {   // saved accounts: the way back to online play after "Play offline instead" (and a switch between several accounts)
-            int slot = 0;
-            for (const auto &acc : saved_accounts())
-            {
-                if (acc.first == store_.account || slot >= 4)
-                    continue;
-                form_.add_action(kUse0 + slot, "Play online as " + acc.second).description = "Switch to this saved Microsoft account. No new sign-in is needed.";
-                ++slot;
-            }
-        }
+        const bool signed_in = !(store_.account == "offline" || store_.account == "demo" || store_.account.empty());
+
         if (signed_in)
         {
+            // Online mode: show the traditional account form
+            profilePickerActive_ = false;
+            form_.add_header("Playing as");
+            form_.add_value(kAccount, "Account", account_label()).description =
+                "Signed in with Microsoft: online play and servers that check accounts work.";
+            form_.add_action(kUsername, "Offline username: " + store_.username).description =
+                "The name you play under offline: 3 to 16 letters, digits or underscores. A different name is a different player in worlds that already exist.";
+            form_.add_header("Microsoft");
+            form_.add_action(kSignIn, "Sign in with another account").description =
+                "Shows a code. Open the page on a phone or PC, type the code and sign in with the account that owns Minecraft: Java Edition. Takes a minute.";
+            form_.add_value(kInfo1, "Sign-in code", "None").description = "Appears here while you sign in.";
+            form_.add_value(kInfo2, "Open this page", "None").description = "The page to open on a phone or PC.";
+            {   // saved accounts: the way back to online play after "Play offline instead" (and a switch between several accounts)
+                int slot = 0;
+                for (const auto &acc : saved_accounts())
+                {
+                    if (acc.first == store_.account || slot >= 4)
+                        continue;
+                    form_.add_action(kUse0 + slot, "Play online as " + acc.second).description = "Switch to this saved Microsoft account. No new sign-in is needed.";
+                    ++slot;
+                }
+            }
             form_.add_action(kOffline, "Play offline instead").description = "Switch back to the offline account. Your Microsoft sign-in stays saved.";
             form_.add_action(kSignOut, "Sign out of " + account_label()).description = "Forgets this Microsoft account on this console (its sign-in and saved tokens). You play offline until you sign in again.";
+        }
+        else
+        {
+            // Offline mode: use ProfilePicker for profile selection
+            build_offline_profiles();
         }
         finish_form();
         login_shown_.clear();
         login_poll_ = 0.0f;
+    }
+
+    void build_offline_profiles()
+    {
+        // Build profiles from store_.offlineProfiles
+        std::vector<ui::ProfilePicker::Profile> profiles;
+        for (const auto &name : store_.offlineProfiles)
+        {
+            ui::ProfilePicker::Profile p;
+            p.name = name;
+            p.detail = "Offline profile";
+            p.extra = "Press Cross to select";
+            p.image = 0; // will draw initials
+            p.accent = ui::Avatar::color_of(name, 0.6f, 0.8f);
+            p.tag = (name == store_.username) ? 1 : 0; // mark current profile
+            profiles.push_back(std::move(p));
+        }
+
+        // If no profiles exist, add the default username
+        if (profiles.empty())
+        {
+            ui::ProfilePicker::Profile p;
+            p.name = store_.username;
+            p.detail = "Offline profile";
+            p.extra = "Press Cross to select";
+            p.image = 0;
+            p.accent = ui::Avatar::color_of(store_.username, 0.6f, 0.8f);
+            p.tag = 1;
+            profiles.push_back(std::move(p));
+        }
+
+        // Configure ProfilePicker
+        profilePicker_.style = ui::ProfilePicker::ProfilePickerStyle{};
+        profilePicker_.style.theme = theme_;
+        profilePicker_.style.reduced_motion = context_.settings.reduced_motion;
+        profilePicker_.style.title = "Who is playing?";
+        profilePicker_.style.add_card = true;
+        profilePicker_.style.add_label = "Add profile";
+        profilePicker_.style.columns = 4;
+        profilePicker_.style.card_width = 230.0f;
+        profilePicker_.style.card_height = 252.0f;
+        profilePicker_.style.gap = 28.0f;
+        profilePicker_.style.focus_scale = 1.1f;
+        profilePicker_.style.lift = 12.0f;
+        profilePicker_.style.expand = 38.0f;
+        profilePicker_.style.accent_by_profile = true;
+
+        profilePicker_.set_profiles(std::move(profiles));
+        profilePicker_.set_bounds({sheet_rect().x + 48, sheet_rect().y + 112, 940, sheet_rect().h - 152});
+        profilePicker_.enter();
+
+        profilePickerActive_ = true;
+
+        // Also add a button to go back to sign-in
+        form_.add_header("Playing as (Offline)");
+        form_.add_value(kAccount, "Mode", "Offline").description = "You are playing offline. Select a profile below or sign in with Microsoft for online play.";
+        form_.add_header("Microsoft");
+        form_.add_action(kSignIn, "Sign in with Microsoft").description =
+            "Shows a code. Open the page on a phone or PC, type the code and sign in with the account that owns Minecraft: Java Edition. Takes a minute.";
+        form_.add_value(kInfo1, "Sign-in code", "None").description = "Appears here while you sign in.";
+        form_.add_value(kInfo2, "Open this page", "None").description = "The page to open on a phone or PC.";
     }
 
     // ---- drawing of the tool pages ----
@@ -4593,7 +4718,16 @@ class Launcher final : public app::Concept
         }
 
         ui::Canvas canvas{list, fonts, glass, clock_};
-        form_.draw(canvas);
+
+        // In offline mode (or demo mode), draw the ProfilePicker instead of the form
+        if (mode_ == Mode::account && profilePickerActive_ && !store_.account.empty() && (store_.account == "offline" || store_.account == "demo"))
+        {
+            profilePicker_.draw(canvas);
+        }
+        else
+        {
+            form_.draw(canvas);
+        }
 
         // Right column: live summary card and the focused row's help.
         const Rect art{sheet.x + sheet.w - 56 - 420, sheet.y + 56, 330, 330};   // smaller than before: the help text below needs room for up to 8 lines
@@ -4825,6 +4959,9 @@ class Launcher final : public app::Concept
     std::string error_title_, error_text_;
     bool error_retry_ = true;
     tween::Spring err_t_;
+    // Profile picker for offline mode
+    ui::ProfilePicker profilePicker_;
+    bool profilePickerActive_ = false;
 };
 
 } // namespace

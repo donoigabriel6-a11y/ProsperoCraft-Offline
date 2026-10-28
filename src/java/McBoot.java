@@ -935,10 +935,10 @@ public class McBoot {
     static void applyAuthHosts() {
         String selAcc = Launcher.load(new File(DIR, "launcher.cfg")).getProperty("account", "").trim();
         String[] keys = { "minecraft.api.env", "minecraft.api.auth.host", "minecraft.api.account.host", "minecraft.api.session.host", "minecraft.api.services.host" };
-        if (selAcc.isEmpty() || selAcc.equals("offline")) {
+        if (selAcc.isEmpty() || selAcc.equals("offline") || selAcc.equals("demo")) {
             System.setProperty(keys[0], "custom");
             for (int i = 1; i < keys.length; i++) System.setProperty(keys[i], "http://127.0.0.1:9");
-            Hello.log("auth: offline, Mojang services are switched off for this start");
+            Hello.log("auth: " + (selAcc.equals("demo") ? "demo" : "offline") + ", Mojang services are switched off for this start");
         } else {
             for (String k : keys) System.clearProperty(k);
             Hello.log("auth: account " + selAcc + " selected, the game keeps the real Mojang service hosts");

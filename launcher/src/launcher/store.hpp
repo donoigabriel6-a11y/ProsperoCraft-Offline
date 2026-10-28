@@ -66,6 +66,7 @@ class Store
     std::string current;               // launcher.cfg instance=
     std::string account = "offline";   // launcher.cfg account=
     std::string username = "Player";   // launcher.cfg username=: the offline player name (an instance.cfg username= overrides it)
+    std::vector<std::string> offlineProfiles; // launcher.cfg offlineProfiles=: comma-separated offline profile names
     std::string selected;              // versions/selected.txt: what the default instance runs when it names no version
 
     // Reads <root>; a missing folder yields the default instance only.
@@ -99,6 +100,8 @@ class Store
     void demo_apply(const std::string &command);
     // The Java this title runs on (from .kit/runtime.txt), "" when unknown.
     std::string runtime() const;
+    // Save offline profiles to launcher.cfg
+    bool save_offline_profiles() const;
 
   private:
     std::map<std::string, std::vector<Item>> demo_items_;

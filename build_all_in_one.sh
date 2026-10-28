@@ -150,7 +150,9 @@ if [[ "$SKIP_DEPS" == false ]]; then
         mkdir -p "$SDK_DIR"
         git -C "$SDK_DIR" init --quiet
         git -C "$SDK_DIR" remote add origin https://github.com/ps5-payload-dev/sdk.git
-        git -C "$SDK_DIR" fetch --quiet --depth 1 origin main
+        # Try master first (default for this repo), fallback to main
+        git -C "$SDK_DIR" fetch --quiet --depth 1 origin master 2>/dev/null \
+            || git -C "$SDK_DIR" fetch --quiet --depth 1 origin main
         git -C "$SDK_DIR" checkout --quiet --detach FETCH_HEAD
     fi
 

@@ -1,0 +1,120 @@
+name: Build .pkg for PS5
+
+on:
+  workflow_dispatch:  # Manual trigger from Actions tab
+  push:
+    branches: [main]
+    tags: ['v*']
+
+# This workflow REQUIRES a self-hosted runner with PS5 SDK pre-installed.
+# GitHub-hosted runners CANNOT build PS5 homebrew (proprietary SDK, no console for deployment).
+#
+# Self-hosted runner setup:
+# 1. Linux/WSL machine with:
+#    - PS5 payload SDK at ~/.deps/native/ps5-payload-sdk
+#    - OpenGL SDK at ~/glsdk/ps5-opengl-sdk-1.0.2/
+#    - Pre-built JDKs: ~/ps5jvm, ~/ps5jvm21, ~/ps5jvm25, ~/ps5jvm8
+#    - LWJGL jars cached at ~/lwjgl_jars_*
+#    - Vulkan project (optional): ~/PS5_Vulkan, ~/PS5_VulkanTemplate
+#    - Zink object (optional): ~/zink_obj/zink.o
+# 2. Runner labels: "ps5-sdk" (configure in runner settings)
+# 3. Environment variables in repo settings:
+#    - MSA_CLIENT_ID (Azure app ID for Microsoft sign-in)
+#    - PS5_HOST (optional, for deploy step)
+
+jobs:
+  build-pkg:
+    name: Build .pkg artifact
+    runs-on: [self-hosted, ps5-sdk]  # Requires self-hosted runner with "ps5-sdk" label
+    timeout-minutes: 120
+
+    env:
+      BUILD_DIR: ${{ github.workspace }}/build/ps5-mc-java
+      # MSA_CLIENT_ID from repo secrets
+      # PS5_HOST from repo secrets (optional)
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Verify build environment
+        run: |
+          echo "=== Build Environment Check ==="
+          echo "PS5 SDK: $([ -d ~/.deps/native/ps5-payload-sdk ] && echo 'FOUND' || echo 'MISSING')"
+          echo "OpenGL SDK: $([ -d ~/glsdk/ps5-opengl-sdk-1.0.2 ] && echo 'FOUND' || echo 'MISSING')"
+          echo "JDK 17: $([ -f ~/ps5jvm/whole-hotspot.a ] && echo 'FOUND' || echo 'MISSING')"
+          echo "JDK 21: $([ -f ~/ps5jvm21/whole-hotspot.a ] && echo 'FOUND' || echo 'MISSING')"
+          echo "LWJGL 3.3.3: $([ -f ~/lwjgl_jars_3.3.3/lwjgl.jar ] && echo 'FOUND' || echo 'MISSING')"
+          echo "Java: $(java -version 2>&1 | head -1)"
+          echo "make: $(make --version | head -1)"
+          echo "clang: $(clang --version | head -1)"
+          echo "python3: $(python3 --version)"
+          echo ""
+
+      - name: Sync sources to build directory
+        run: |
+          bash tools/sync.sh --build-dir "$BUILD_DIR"
+
+      - name: Build .pkg (launcher + mc + native UI)
+        run: |
+          cd "$BUILD_DIR"
+          # Build options: jit gl mc launcher sdk100 nativeui
+          # Add vk for Vulkan/Zink support
+          bash ../tools/build.sh "${{ env.PS5_HOST || echo '127.0.0.1' }}" "${{ env.PS5_HOST || echo '127.0.0.1' }}" \
+            --build-dir "$BUILD_DIR" -- jit gl mc launcher sdk100 nativeui
+
+      - name: Find built .pkg file
+        id: pkg
+        run: |
+          # The build creates dist/<TITLE_ID>.ffpkg
+          TITLE_ID=$(python3 -c "
+import json
+with open('title/sce_sys/param.json') as f:
+    print(json.load(f)['titleId'])
+")
+          PKG_FILE="$BUILD_DIR/dist/${TITLE_ID}.ffpkg"
+          if [ ! -f "$PKG_FILE" ]; then
+            echo "Error: .pkg not found at $PKG_FILE" >&2
+            exit 1
+          fi
+          echo "pkg_file=$PKG_FILE" >> $GITHUB_OUTPUT
+          echo "title_id=$TITLE_ID" >> $GITHUB_OUTPUT
+
+      - name: Upload .pkg as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ProsperoCraft-${{ steps.pkg.outputs.title_id }}.pkg
+          path: ${{ steps.pkg.outputs.pkg_file }}
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Create exFAT disk image (optional)
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        run: |
+          bash build_exfat.sh --skip-build --size 512 --output "ProsperoCraft-${{ steps.pkg.outputs.title_id }}.img"
+
+      - name: Upload exFAT image as artifact
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ProsperoCraft-${{ steps.pkg.outputs.title_id }}-exfat.img
+          path: ProsperoCraft-${{ steps.pkg.outputs.title_id }}.img
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Build summary
+        if: always()
+        run: |
+          echo "## Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "| Item | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Title ID | ${{ steps.pkg.outputs.title_id }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| .pkg artifact | ✅ Uploaded |" >> $GITHUB_STEP_SUMMARY
+          if [ -f "ProsperoCraft-${{ steps.pkg.outputs.title_id }}.img" ]; then
+            echo "| exFAT image | ✅ Uploaded |" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Download the `.pkg` artifact from the workflow run summary."
+          echo "Copy to USB (exFAT) and install via PS5 Settings > System > System Software > Install Package Files."

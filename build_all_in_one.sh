@@ -86,6 +86,10 @@ if [[ -z "$OUTPUT_FILE" ]]; then
     OUTPUT_FILE="${APP_NAME}-${VERSION}.img"
 fi
 
+# SDK directory (used by multiple steps)
+SDK_DIR="$HOME/.deps/native/ps5-payload-sdk"
+GLSDK_DIR="$HOME/glsdk/ps5-opengl-sdk-1.0.2/sdk"
+
 echo "=========================================="
 echo "  ProsperoCraft All-in-One Build Script"
 echo "=========================================="
@@ -145,7 +149,6 @@ fi
 if [[ "$SKIP_DEPS" == false ]]; then
     log_info "Step 2/7: Setting up PS5 Payload SDK..."
 
-    SDK_DIR="$HOME/.deps/native/ps5-payload-sdk"
     if [[ ! -d "$SDK_DIR/.git" ]]; then
         mkdir -p "$SDK_DIR"
         git -C "$SDK_DIR" init --quiet
@@ -184,7 +187,6 @@ fi
 if [[ "$SKIP_DEPS" == false ]]; then
     log_info "Step 3/7: Setting up OpenGL SDK 1.0.2..."
 
-    GLSDK_DIR="$HOME/glsdk/ps5-opengl-sdk-1.0.2/sdk"
     if [[ ! -f "$GLSDK_DIR/lib/libps5_opengl_core33.a" ]]; then
         mkdir -p "$HOME/glsdk"
         cd "$HOME/glsdk"

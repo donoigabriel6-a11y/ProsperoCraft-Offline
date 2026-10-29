@@ -218,12 +218,18 @@ if [[ "$SKIP_JDKS" == false ]]; then
     done
 
     if [[ "$NEED_JDK" == true ]]; then
-        # Check if build_jdk.sh exists
-        if [[ ! -f "$REPO_ROOT/tools/build_jdk.sh" ]]; then
-            log_warn "build_jdk.sh not found in repo, downloading..."
+        # Check if build_jdk.sh exists (first in repo, then in PS5 SDK, then download)
+        BUILD_JDK_SCRIPT=""
+        if [[ -f "$REPO_ROOT/tools/build_jdk.sh" ]]; then
+            BUILD_JDK_SCRIPT="$REPO_ROOT/tools/build_jdk.sh"
+        elif [[ -f "$SDK_DIR/tools/build_jdk.sh" ]]; then
+            BUILD_JDK_SCRIPT="$SDK_DIR/tools/build_jdk.sh"
+        else
+            log_warn "build_jdk.sh not found locally, downloading from PS5 SDK..."
             curl -fL -o "$REPO_ROOT/tools/build_jdk.sh" \
-                https://raw.githubusercontent.com/ps5-payload-dev/sdk/main/tools/build_jdk.sh
+                https://raw.githubusercontent.com/ps5-payload-dev/sdk/master/tools/build_jdk.sh
             chmod +x "$REPO_ROOT/tools/build_jdk.sh"
+            BUILD_JDK_SCRIPT="$REPO_ROOT/tools/build_jdk.sh"
         fi
 
         for v in 17 21 25; do

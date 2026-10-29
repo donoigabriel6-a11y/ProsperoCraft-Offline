@@ -158,7 +158,21 @@ if [[ "$SKIP_DEPS" == false ]]; then
 
     if [[ ! -f "$SDK_DIR/target/bin/clang" ]]; then
         log_info "Building PS5 SDK (this takes a few minutes)..."
-        cd "$SDK_DIR" && ./build.sh 2>&1 | tail -10
+        cd "$SDK_DIR"
+        # Try different build script names/locations
+        if [[ -f "./build.sh" ]]; then
+            ./build.sh 2>&1 | tail -10
+        elif [[ -f "./build_sdk.sh" ]]; then
+            ./build_sdk.sh 2>&1 | tail -10
+        elif [[ -f "./tools/build.sh" ]]; then
+            ./tools/build.sh 2>&1 | tail -10
+        elif [[ -f "./scripts/build.sh" ]]; then
+            ./scripts/build.sh 2>&1 | tail -10
+        else
+            log_error "No build script found in PS5 SDK"
+            log_info "Available files: $(ls -la)"
+            exit 1
+        fi
     fi
 
     log_ok "PS5 SDK ready at $SDK_DIR"
